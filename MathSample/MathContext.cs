@@ -14,6 +14,24 @@ namespace MathSample
         public NodeVisual CurrentProcessingNode { get; set; }
         public event Action<string, NodeVisual, FeedbackType, object, bool> FeedbackInfo;
 
+        [Node("String Value", "Input", "Basic", "Allows to output a simple string value.",false)]
+        public void StringValue(string inValue, out string outValue)
+        {
+            outValue = inValue;
+        }
+
+        [Node("String List Value", "Input", "Basic", "Allows to output a simple string list value.", false)]
+        public void StringListValue(string[] inValue, out string[] outValue)
+        {
+            outValue = inValue;
+        }
+
+        [Node("Foreach", "Operators", "Basic", "Allows to output a simple string list value.", true)]
+        public void Foreach(IEnumerable<string> inValue)
+        {
+            ;
+        }
+
         [Node("Value", "Input", "Basic", "Allows to output a simple value.",false)]
         public void InputValue(float inValue, out float outValue)
         {

@@ -172,56 +172,136 @@ namespace NodeEditor
         /// </summary>
         public object GetNodeContext()
         {
-            const string stringTypeName = "System.String";
-
             if (nodeContext == null)
-            {                
-                dynamic context = new DynamicNodeContext();
+            {
+                DynamicNodeContext context = new DynamicNodeContext();
 
-                foreach (var input in GetInputs())
+                foreach (ParameterInfo input in GetInputs())
                 {
-                    var contextName = input.Name.Replace(" ", "");
-                    if (input.ParameterType.FullName.Replace("&", "") == stringTypeName)
+                    string contextName = input.Name.Replace(" ", "");
+                    Type paramType = input.ParameterType;
+                    
+                    // Handle ref/out parameters by getting the underlying type
+                    if (paramType.IsByRef)
                     {
-                        context[contextName] = string.Empty;
+                        paramType = paramType.GetElementType();
                     }
-                    else
-                    {
-                        try
-                        {
-                            context[contextName] = Activator.CreateInstance(AppDomain.CurrentDomain, input.ParameterType.Assembly.GetName().Name,
-                            input.ParameterType.FullName.Replace("&", "").Replace(" ", "")).Unwrap();
-                        }
-                        catch (MissingMethodException ex) //For case when type does not have default constructor
-                        {
-                            context[contextName] = null;
-                        }
-                    }
+                    
+                    context[contextName] = CreateDefaultInstance(paramType);
                 }
-                foreach (var output in GetOutputs())
+                foreach (ParameterInfo output in GetOutputs())
                 {
                     var contextName = output.Name.Replace(" ", "");
-                    if (output.ParameterType.FullName.Replace("&", "") == stringTypeName)
+                    Type paramType = output.ParameterType;
+                    
+                    // Handle ref/out parameters by getting the underlying type
+                    if (paramType.IsByRef)
                     {
-                        context[contextName] = string.Empty;
+                        paramType = paramType.GetElementType();
                     }
-                    else
-                    {
-                        try
-                        {
-                            context[contextName] = Activator.CreateInstance(AppDomain.CurrentDomain, output.ParameterType.Assembly.GetName().Name,
-                            output.ParameterType.FullName.Replace("&", "").Replace(" ", "")).Unwrap();
-                        }
-                        catch(MissingMethodException ex) //For case when type does not have default constructor
-                        {
-                            context[contextName] = null;
-                        }
-                    }
+                    
+                    context[contextName] = CreateDefaultInstance(paramType);
                 }
 
                 nodeContext = context;
             }
             return nodeContext;
+        }
+        
+        /// <summary>
+        /// Creates a default instance of the specified type, handling special cases like arrays, strings, and value types.
+        /// </summary>
+        private object CreateDefaultInstance(Type type)
+        {
+            // Handle string type
+            if (type == typeof(string))
+            {
+                return string.Empty;
+            }
+
+            // Handle array types
+            if (type.IsArray)
+            {
+                // Create an empty array of the appropriate type
+                return Array.CreateInstance(type.GetElementType(), 0);
+            }
+            
+            // Handle generic collection types (List<T>, IList<T>, IEnumerable<T>, etc.)
+            if (type.IsGenericType)
+            {
+                Type genericTypeDef = type.GetGenericTypeDefinition();
+                Type[] genericArgs = type.GetGenericArguments();
+                
+                // Handle IEnumerable<T>, IList<T>, ICollection<T> interfaces
+                if (genericTypeDef == typeof(IEnumerable<>) || 
+                    genericTypeDef == typeof(IList<>) || 
+                    genericTypeDef == typeof(ICollection<>))
+                {
+                    // Create a List<T> for interface types
+                    Type listType = typeof(List<>).MakeGenericType(genericArgs);
+                    return Activator.CreateInstance(listType);
+                }
+                
+                // Handle Dictionary<TKey, TValue> and IDictionary<TKey, TValue>
+                if (genericTypeDef == typeof(IDictionary<,>) || 
+                    genericTypeDef == typeof(Dictionary<,>))
+                {
+                    Type dictType = typeof(Dictionary<,>).MakeGenericType(genericArgs);
+                    return Activator.CreateInstance(dictType);
+                }
+                
+                // Handle HashSet<T> and ISet<T>
+                if (genericTypeDef == typeof(ISet<>) || 
+                    genericTypeDef == typeof(HashSet<>))
+                {
+                    Type hashSetType = typeof(HashSet<>).MakeGenericType(genericArgs);
+                    return Activator.CreateInstance(hashSetType);
+                }
+                
+                // Try to create instance for other generic types
+                try
+                {
+                    return Activator.CreateInstance(type);
+                }
+                catch
+                {
+                    // If it's a generic interface or abstract class, try to create a List<T> as fallback
+                    if (type.IsInterface || type.IsAbstract)
+                    {
+                        if (genericArgs.Length == 1)
+                        {
+                            Type listType = typeof(List<>).MakeGenericType(genericArgs);
+                            return Activator.CreateInstance(listType);
+                        }
+                    }
+                    return null;
+                }
+            }
+            
+            // Handle non-generic collection interfaces
+            if (type == typeof(System.Collections.IEnumerable) || 
+                type == typeof(System.Collections.IList) || 
+                type == typeof(System.Collections.ICollection))
+            {
+                return new System.Collections.ArrayList();
+            }
+            
+            // Handle value types (int, float, structs, etc.)
+            if (type.IsValueType)
+            {
+                return Activator.CreateInstance(type);
+            }
+            
+            // Handle reference types with parameterless constructor
+            try
+            {
+                return Activator.CreateInstance(type);
+            }
+            catch (Exception)
+            {
+                // Return null for types without parameterless constructor
+                return null;
+            }
         }
 
         internal ParameterInfo[] GetInputs()

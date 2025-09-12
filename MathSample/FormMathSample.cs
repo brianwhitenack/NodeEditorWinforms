@@ -25,9 +25,6 @@ namespace MathSample
             //Context assignment
             controlNodeEditor.nodesControl.Context = context;
             controlNodeEditor.nodesControl.OnNodeContextSelected += NodesControlOnOnNodeContextSelected; 
-            
-            //Loading sample from file
-            controlNodeEditor.nodesControl.Deserialize(File.ReadAllBytes("default.nds"));
         }
 
         private void NodesControlOnOnNodeContextSelected(object o)

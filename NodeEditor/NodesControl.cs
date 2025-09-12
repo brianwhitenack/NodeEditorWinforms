@@ -346,8 +346,21 @@ namespace NodeEditor
             var otype = Type.GetType(output.Type.FullName.Replace("&", ""), AssemblyResolver, TypeResolver);
             var itype = Type.GetType(input.Type.FullName.Replace("&", ""), AssemblyResolver, TypeResolver);
             if (otype == null || itype == null) return false;
-            var allow = otype == itype || otype.IsSubclassOf(itype);
-            return allow;
+            
+            // Check for exact match
+            if (otype == itype) return true;
+            
+            // Check for inheritance
+            if (otype.IsSubclassOf(itype)) return true;
+            
+            // Check for interface implementation
+            if (itype.IsInterface && itype.IsAssignableFrom(otype)) return true;
+            
+            // Special case: Check if output type can be assigned to input type
+            // This handles cases like string[] to IEnumerable<string>
+            if (itype.IsAssignableFrom(otype)) return true;
+            
+            return false;
         }
 
         private Type TypeResolver(Assembly assembly, string name, bool inh)
