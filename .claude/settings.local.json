@@ -7,7 +7,9 @@
       "Bash(nuget restore:*)",
       "Bash(dotnet restore:*)",
       "Bash(dotnet build)",
-      "Bash(msbuild:*)"
+      "Bash(msbuild:*)",
+      "Bash(dotnet build:*)",
+      "Bash(MSBuild.exe:*)"
     ],
     "deny": [],
     "ask": []

@@ -13,7 +13,7 @@ namespace MathSample
     public partial class FormMathSample : Form
     {
         //Context that will be used for our nodes
-        MathContext context = new MathContext();
+        PartCalculation context = new PartCalculation();
 
         public FormMathSample()
         {

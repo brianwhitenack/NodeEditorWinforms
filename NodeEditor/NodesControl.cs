@@ -288,7 +288,7 @@ namespace NodeEditor
                         {
                             if ((ModifierKeys & Keys.Control) == Keys.Control)
                             {
-                                var connection =
+                                NodeConnection connection =
                                     graph.Connections.FirstOrDefault(
                                         x => x.InputNode == nodeWhole && x.InputSocketName == socket.Name);
 
@@ -316,6 +316,13 @@ namespace NodeEditor
 
                                 graph.Connections.Remove(connection);
                                 rebuildConnectionDictionary = true;
+
+                                // Handle type propagation after disconnection
+                                if (connection != null && connection.InputNode.HasDynamicTypeSupport())
+                                {
+                                    connection.InputNode.PropagateTypes(graph);
+                                    PropagateTypesDownstream(connection.InputNode);
+                                }
                             }
                             else
                             {
@@ -344,24 +351,30 @@ namespace NodeEditor
 
         private bool IsConnectable(SocketVisual a, SocketVisual b)
         {
-            var input = a.Input ? a : b;
-            var output = a.Input ? b : a;
-            var otype = Type.GetType(output.Type.FullName.Replace("&", ""), AssemblyResolver, TypeResolver);
-            var itype = Type.GetType(input.Type.FullName.Replace("&", ""), AssemblyResolver, TypeResolver);
-            if (otype == null || itype == null) return false;
+            SocketVisual input = a.Input ? a : b;
+            SocketVisual output = a.Input ? b : a;
+
+            // Use runtime types if available, otherwise fall back to static types
+            Type outputType = output.RuntimeType ?? output.Type;
+            Type inputType = input.RuntimeType ?? input.Type;
+
+            outputType = Type.GetType(outputType.FullName.Replace("&", ""), AssemblyResolver, TypeResolver);
+            inputType = Type.GetType(inputType.FullName.Replace("&", ""), AssemblyResolver, TypeResolver);
+
+            if (outputType == null || inputType == null) return false;
 
             // Check for exact match
-            if (otype == itype) return true;
+            if (outputType == inputType) return true;
 
             // Check for inheritance
-            if (otype.IsSubclassOf(itype)) return true;
+            if (outputType.IsSubclassOf(inputType)) return true;
 
             // Check for interface implementation
-            if (itype.IsInterface && itype.IsAssignableFrom(otype)) return true;
+            if (inputType.IsInterface && inputType.IsAssignableFrom(outputType)) return true;
 
             // Special case: Check if output type can be assigned to input type
             // This handles cases like string[] to IEnumerable<string>
-            if (itype.IsAssignableFrom(otype)) return true;
+            if (inputType.IsAssignableFrom(outputType)) return true;
 
             return false;
         }
@@ -406,7 +419,7 @@ namespace NodeEditor
                     {
                         if (IsConnectable(dragSocket, socket) && dragSocket.Input != socket.Input)
                         {
-                            var nc = new NodeConnection();
+                            NodeConnection nc = new NodeConnection();
                             if (!dragSocket.Input)
                             {
                                 nc.OutputNode = dragSocketNode;
@@ -427,6 +440,9 @@ namespace NodeEditor
 
                             graph.Connections.Add(nc);
                             rebuildConnectionDictionary = true;
+
+                            // Propagate types for dynamic nodes
+                            PropagateTypesForConnection(nc);
                         }
                     }
                 }
@@ -435,6 +451,224 @@ namespace NodeEditor
             dragSocket = null;
             mdown = false;
             needRepaint = true;
+        }
+
+        /// <summary>
+        /// Propagates types through the graph when a connection is made or removed
+        /// </summary>
+        private void PropagateTypesForConnection(NodeConnection connection)
+        {
+            if (connection == null) return;
+
+            // Propagate types for the input node if it supports dynamic typing
+            if (connection.InputNode.HasDynamicTypeSupport())
+            {
+                connection.InputNode.PropagateTypes(graph);
+
+                // Check for incompatible downstream connections
+                DynamicNodeAttribute nodeAttr = connection.InputNode.Type?.GetCustomAttribute<DynamicNodeAttribute>();
+                if (nodeAttr != null && nodeAttr.AutoDisconnectIncompatible)
+                {
+                    DisconnectIncompatibleConnections(connection.InputNode);
+                }
+            }
+
+            // Propagate types through all downstream nodes
+            PropagateTypesDownstream(connection.InputNode);
+        }
+
+        /// <summary>
+        /// Propagates types to all nodes downstream from the given node
+        /// </summary>
+        private void PropagateTypesDownstream(NodeVisual startNode)
+        {
+            HashSet<NodeVisual> visited = new HashSet<NodeVisual>();
+            Queue<NodeVisual> toProcess = new Queue<NodeVisual>();
+            toProcess.Enqueue(startNode);
+
+            while (toProcess.Count > 0)
+            {
+                NodeVisual current = toProcess.Dequeue();
+                if (visited.Contains(current)) continue;
+                visited.Add(current);
+
+                // Find all nodes connected to outputs of current node
+                List<NodeConnection> outputConnections = graph.Connections
+                    .Where(c => c.OutputNode == current)
+                    .ToList();
+
+                foreach (NodeConnection conn in outputConnections)
+                {
+                    if (conn.InputNode.HasDynamicTypeSupport())
+                    {
+                        conn.InputNode.PropagateTypes(graph);
+
+                        // Check for incompatible connections
+                        DynamicNodeAttribute nodeAttr = conn.InputNode.Type?.GetCustomAttribute<DynamicNodeAttribute>();
+                        if (nodeAttr != null && nodeAttr.AutoDisconnectIncompatible)
+                        {
+                            DisconnectIncompatibleConnections(conn.InputNode);
+                        }
+                    }
+
+                    if (!visited.Contains(conn.InputNode))
+                    {
+                        toProcess.Enqueue(conn.InputNode);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Disconnects connections that are no longer type-compatible
+        /// </summary>
+        private void DisconnectIncompatibleConnections(NodeVisual node)
+        {
+            List<NodeConnection> connectionsToRemove = new List<NodeConnection>();
+
+            // Check input connections
+            List<NodeConnection> inputConnections = graph.Connections
+                .Where(c => c.InputNode == node)
+                .ToList();
+
+            foreach (NodeConnection conn in inputConnections)
+            {
+                Type expectedType = node.GetSocketRuntimeType(conn.InputSocketName);
+                Type actualType = conn.OutputNode.GetSocketRuntimeType(conn.OutputSocketName);
+
+                if (expectedType != null && actualType != null)
+                {
+                    if (!TypePropagation.AreTypesCompatible(actualType, expectedType))
+                    {
+                        connectionsToRemove.Add(conn);
+                    }
+                }
+            }
+
+            // Check output connections
+            List<NodeConnection> outputConnections = graph.Connections
+                .Where(c => c.OutputNode == node)
+                .ToList();
+
+            foreach (NodeConnection conn in outputConnections)
+            {
+                Type providedType = node.GetSocketRuntimeType(conn.OutputSocketName);
+                Type requiredType = conn.InputNode.GetSocketRuntimeType(conn.InputSocketName);
+
+                if (providedType != null && requiredType != null)
+                {
+                    // Disconnect if types are incompatible
+                    if (!TypePropagation.AreTypesCompatible(providedType, requiredType))
+                    {
+                        // Special case: if the provided type became generic (object) and the required type is specific,
+                        // we should disconnect - this handles the case where dynamic node reverts to object
+                        if (providedType == typeof(object) && requiredType != typeof(object))
+                        {
+                            connectionsToRemove.Add(conn);
+                        }
+                        // For other incompatibilities, only disconnect if the input socket is dynamic
+                        else if (TypePropagation.IsDynamicSocket(conn.InputNode, conn.InputSocketName))
+                        {
+                            connectionsToRemove.Add(conn);
+                        }
+                        // Also disconnect if both sockets are from dynamic nodes
+                        else if (TypePropagation.IsDynamicSocket(node, conn.OutputSocketName))
+                        {
+                            connectionsToRemove.Add(conn);
+                        }
+                    }
+                }
+            }
+
+            // Remove incompatible connections
+            foreach (NodeConnection conn in connectionsToRemove)
+            {
+                graph.Connections.Remove(conn);
+                rebuildConnectionDictionary = true;
+
+                // Reset types for disconnected input node if it's dynamic
+                if (conn.InputNode.HasDynamicTypeSupport())
+                {
+                    conn.InputNode.PropagateTypes(graph);
+                    PropagateTypesDownstream(conn.InputNode);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Disconnects connections that are no longer type-compatible (overload that returns removed connections)
+        /// </summary>
+        private void DisconnectIncompatibleConnections(NodeVisual node, List<NodeConnection> connectionsRemoved)
+        {
+            List<NodeConnection> connectionsToRemove = new List<NodeConnection>();
+            
+            // Check input connections
+            List<NodeConnection> inputConnections = graph.Connections
+                .Where(c => c.InputNode == node)
+                .ToList();
+                
+            foreach (NodeConnection conn in inputConnections)
+            {
+                Type expectedType = node.GetSocketRuntimeType(conn.InputSocketName);
+                Type actualType = conn.OutputNode.GetSocketRuntimeType(conn.OutputSocketName);
+                
+                if (expectedType != null && actualType != null)
+                {
+                    if (!TypePropagation.AreTypesCompatible(actualType, expectedType))
+                    {
+                        connectionsToRemove.Add(conn);
+                    }
+                }
+            }
+            
+            // Check output connections
+            List<NodeConnection> outputConnections = graph.Connections
+                .Where(c => c.OutputNode == node)
+                .ToList();
+
+            foreach (NodeConnection conn in outputConnections)
+            {
+                Type providedType = node.GetSocketRuntimeType(conn.OutputSocketName);
+                Type requiredType = conn.InputNode.GetSocketRuntimeType(conn.InputSocketName);
+
+                if (providedType != null && requiredType != null)
+                {
+                    // Disconnect if types are incompatible
+                    if (!TypePropagation.AreTypesCompatible(providedType, requiredType))
+                    {
+                        // Special case: if the provided type became generic (object) and the required type is specific,
+                        // we should disconnect - this handles the case where dynamic node reverts to object
+                        if (providedType == typeof(object) && requiredType != typeof(object))
+                        {
+                            connectionsToRemove.Add(conn);
+                        }
+                        // For other incompatibilities, only disconnect if the input socket is dynamic
+                        else if (TypePropagation.IsDynamicSocket(conn.InputNode, conn.InputSocketName))
+                        {
+                            connectionsToRemove.Add(conn);
+                        }
+                        // Also disconnect if both sockets are from dynamic nodes
+                        else if (TypePropagation.IsDynamicSocket(node, conn.OutputSocketName))
+                        {
+                            connectionsToRemove.Add(conn);
+                        }
+                    }
+                }
+            }
+
+            // Remove incompatible connections
+            foreach (NodeConnection conn in connectionsToRemove)
+            {
+                graph.Connections.Remove(conn);
+                rebuildConnectionDictionary = true;
+                connectionsRemoved.Add(conn);
+
+                // Reset types for disconnected input node if it's dynamic
+                if (conn.InputNode.HasDynamicTypeSupport())
+                {
+                    conn.InputNode.PropagateTypes(graph);
+                }
+            }
         }
 
         private void AddToMenu(ToolStripItemCollection items, NodeToken token, string path, EventHandler click)
@@ -632,15 +866,119 @@ namespace NodeEditor
         {
             if (graph.Nodes.Exists(x => x.IsSelected))
             {
-                foreach (var n in graph.Nodes.Where(x => x.IsSelected))
+                // Collect all nodes that will be affected by the deletion BEFORE removing connections
+                HashSet<NodeVisual> affectedNodes = new HashSet<NodeVisual>();
+                
+                foreach (NodeVisual selectedNode in graph.Nodes.Where(x => x.IsSelected))
                 {
-                    Controls.Remove(n.CustomEditor);
-                    graph.Connections.RemoveAll(
-                        x => x.OutputNode == n || x.InputNode == n);
+                    // Find all downstream nodes from this node before we delete connections
+                    CollectDownstreamNodes(selectedNode, affectedNodes);
+                    
+                    // Also collect nodes that have this node as input
+                    List<NodeConnection> incomingConnections = graph.Connections
+                        .Where(x => x.OutputNode == selectedNode)
+                        .ToList();
+                    
+                    foreach (NodeConnection conn in incomingConnections)
+                    {
+                        if (conn.InputNode.HasDynamicTypeSupport() && !graph.Nodes.Any(n => n.IsSelected && n == conn.InputNode))
+                        {
+                            affectedNodes.Add(conn.InputNode);
+                        }
+                    }
                 }
+                
+                // Now remove the selected nodes and their connections
+                foreach (NodeVisual selectedNode in graph.Nodes.Where(x => x.IsSelected))
+                {
+                    Controls.Remove(selectedNode.CustomEditor);
+                    graph.Connections.RemoveAll(x => x.OutputNode == selectedNode || x.InputNode == selectedNode);
+                }
+                
                 graph.Nodes.RemoveAll(x => graph.Nodes.Where(n => n.IsSelected).Contains(x));
+                rebuildConnectionDictionary = true;
+                
+                // After deletion, update types for all affected nodes
+                // We need to do this in multiple passes because disconnecting connections might affect more nodes
+                HashSet<NodeVisual> processedNodes = new HashSet<NodeVisual>();
+                Queue<NodeVisual> nodesToProcess = new Queue<NodeVisual>();
+                
+                // Initial set of affected nodes
+                foreach (NodeVisual affectedNode in affectedNodes)
+                {
+                    if (graph.Nodes.Contains(affectedNode))
+                    {
+                        nodesToProcess.Enqueue(affectedNode);
+                    }
+                }
+                
+                while (nodesToProcess.Count > 0)
+                {
+                    NodeVisual currentNode = nodesToProcess.Dequeue();
+                    if (processedNodes.Contains(currentNode) || !graph.Nodes.Contains(currentNode))
+                        continue;
+                        
+                    processedNodes.Add(currentNode);
+                    
+                    // Store connections before type propagation to see what changes
+                    List<NodeConnection> connectionsBefore = graph.Connections
+                        .Where(c => c.OutputNode == currentNode)
+                        .ToList();
+                    
+                    // Propagate types
+                    currentNode.PropagateTypes(graph);
+                    
+                    // Check for incompatible connections after type reset
+                    DynamicNodeAttribute nodeAttr = currentNode.Type?.GetCustomAttribute<DynamicNodeAttribute>();
+                    if (nodeAttr != null && nodeAttr.AutoDisconnectIncompatible)
+                    {
+                        List<NodeConnection> connectionsRemoved = new List<NodeConnection>();
+                        DisconnectIncompatibleConnections(currentNode, connectionsRemoved);
+                        
+                        // If connections were removed, add affected downstream nodes to processing queue
+                        foreach (NodeConnection removedConn in connectionsRemoved)
+                        {
+                            if (!processedNodes.Contains(removedConn.InputNode))
+                            {
+                                nodesToProcess.Enqueue(removedConn.InputNode);
+                            }
+                        }
+                    }
+                    
+                    // Add directly connected downstream nodes
+                    List<NodeConnection> outputConnections = graph.Connections
+                        .Where(c => c.OutputNode == currentNode)
+                        .ToList();
+                        
+                    foreach (NodeConnection conn in outputConnections)
+                    {
+                        if (!processedNodes.Contains(conn.InputNode))
+                        {
+                            nodesToProcess.Enqueue(conn.InputNode);
+                        }
+                    }
+                }
             }
             Invalidate();
+        }
+        
+        /// <summary>
+        /// Collects all nodes downstream from the given node
+        /// </summary>
+        private void CollectDownstreamNodes(NodeVisual startNode, HashSet<NodeVisual> collected)
+        {
+            List<NodeConnection> outgoingConnections = graph.Connections
+                .Where(c => c.OutputNode == startNode)
+                .ToList();
+                
+            foreach (NodeConnection conn in outgoingConnections)
+            {
+                if (!collected.Contains(conn.InputNode) && !graph.Nodes.Any(n => n.IsSelected && n == conn.InputNode))
+                {
+                    collected.Add(conn.InputNode);
+                    CollectDownstreamNodes(conn.InputNode, collected); // Recursive call to get all downstream
+                }
+            }
         }
 
         /// <summary>
@@ -1034,6 +1372,16 @@ namespace NodeEditor
                 }
                 br.ReadBytes(br.ReadInt32()); //read additional data
             }
+            
+            // Propagate types for all dynamic nodes after loading
+            foreach (NodeVisual node in graph.Nodes)
+            {
+                if (node.HasDynamicTypeSupport())
+                {
+                    node.PropagateTypes(graph);
+                }
+            }
+            
             Refresh();
         }
 
@@ -1268,6 +1616,15 @@ namespace NodeEditor
                 if (connection.OutputNode != null && connection.InputNode != null)
                 {
                     graph.Connections.Add(connection);
+                }
+            }
+            
+            // Propagate types for all dynamic nodes after loading
+            foreach (NodeVisual node in graph.Nodes)
+            {
+                if (node.HasDynamicTypeSupport())
+                {
+                    node.PropagateTypes(graph);
                 }
             }
 
