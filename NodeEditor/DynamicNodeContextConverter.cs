@@ -31,13 +31,16 @@ namespace NodeEditor
     {
         public override PropertyDescriptorCollection GetProperties(ITypeDescriptorContext context, object value, Attribute[] attributes)
         {
-            var obj = value as DynamicNodeContext;
+            DynamicNodeContext obj = value as DynamicNodeContext;
             List<PropertyDescriptor> props = new List<PropertyDescriptor>();
-            var type = obj.GetType();
+            Type type = obj.GetType();
             foreach (var p in obj)
             {
-                var prop = new DynamicPropertyDescriptor(p, obj[p].GetType(), typeof (DynamicNodeContext));
-                props.Add(prop);
+                if (obj[p] != null)
+                {
+                    DynamicPropertyDescriptor prop = new DynamicPropertyDescriptor(p, obj[p].GetType(), typeof(DynamicNodeContext));
+                    props.Add(prop);
+                }
             }
 
             return new PropertyDescriptorCollection(props.ToArray());            

@@ -22,15 +22,19 @@ using System.ComponentModel;
 using System.Dynamic;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
+
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace NodeEditor
 {
     /// <summary>
     /// Class used as internal context of each node.
     /// </summary>
-    [TypeConverter(typeof(DynamicNodeContextConverter))]   
+    [TypeConverter(typeof(DynamicNodeContextConverter))]
     public class DynamicNodeContext : DynamicObject, IEnumerable<String>
     {
         private readonly IDictionary<string, object> dynamicProperties =
@@ -38,17 +42,17 @@ namespace NodeEditor
 
         internal byte[] Serialize()
         {
-            using (var bw = new BinaryWriter(new MemoryStream()))
+            using (BinaryWriter bw = new BinaryWriter(new MemoryStream()))
             {
-                foreach (var prop in dynamicProperties)
+                foreach (KeyValuePair<string, object> prop in dynamicProperties)
                 {
-                    if (prop.Value.GetType().IsSerializable)
+                    if (prop.Value != null && prop.Value.GetType().IsSerializable)
                     {
                         using (var ps = new MemoryStream())
                         {
                             new BinaryFormatter().Serialize(ps, prop.Value);
                             bw.Write(prop.Key);
-                            bw.Write((int) ps.Length);
+                            bw.Write((int)ps.Length);
                             bw.Write(ps.ToArray());
                         }
                     }
@@ -60,7 +64,7 @@ namespace NodeEditor
         internal void Deserialize(byte[] data)
         {
             dynamicProperties.Clear();
-            using (var br = new BinaryReader(new MemoryStream(data)))
+            using (BinaryReader br = new BinaryReader(new MemoryStream(data)))
             {
                 while (br.BaseStream.Position < br.BaseStream.Length)
                 {
@@ -75,15 +79,105 @@ namespace NodeEditor
             }
         }
 
+        internal Dictionary<string, Serialization.ContextProperty> GetPropertiesForSerialization()
+        {
+            Dictionary<string, Serialization.ContextProperty> result = new Dictionary<string, Serialization.ContextProperty>();
+            foreach (KeyValuePair<string, object> prop in dynamicProperties)
+            {
+                result[prop.Key] = new Serialization.ContextProperty
+                {
+                    Value = prop.Value,
+                    Type = prop.Value?.GetType().FullName ?? "",
+                    ActualType = prop.Value?.GetType().AssemblyQualifiedName ?? ""  // Store full type info for deserialization
+                };
+            }
+            return result;
+        }
+
+        internal void SetPropertiesFromSerialization(Dictionary<string, Serialization.ContextProperty> properties, NodeVisual node)
+        {
+            dynamicProperties.Clear();
+
+            foreach (KeyValuePair<string, Serialization.ContextProperty> prop in properties)
+            {
+                object propertyValue = prop.Value.Value;
+                if (propertyValue == null)
+                {
+                    continue;
+                }
+
+                string propertyName = prop.Key;
+                SocketVisual matchingSocket = node.GetSockets().Single(s => s.Name == propertyName);
+
+                Type targetType;
+                try
+                {
+                    targetType = Type.GetType(prop.Value.ActualType);
+                }
+                catch
+                {
+                    // Fall back to socket type if actual type can't be loaded
+                    targetType = matchingSocket.Type;
+                }
+
+                // Handle reference types (ref/out parameters) - strip the & suffix
+                if (targetType.IsByRef)
+                {
+                    targetType = targetType.GetElementType();
+                }
+
+                    // Convert JToken types to appropriate CLR types
+                if (propertyValue is JToken jToken)
+                {
+                    if (targetType.IsInterface)
+                    {
+                        // Map common interfaces to concrete types
+                        if (targetType.IsGenericType)
+                        {
+                            Type genericDef = targetType.GetGenericTypeDefinition();
+                            if (genericDef == typeof(IEnumerable<>) ||
+                                genericDef == typeof(IList<>) ||
+                                genericDef == typeof(ICollection<>))
+                            {
+                                // Use List<T> for these interfaces
+                                Type elementType = targetType.GetGenericArguments()[0];
+                                targetType = typeof(List<>).MakeGenericType(elementType);
+                            }
+                            else if (genericDef == typeof(IDictionary<,>))
+                            {
+                                // Use Dictionary<K,V> for IDictionary
+                                Type[] genericArgs = targetType.GetGenericArguments();
+                                targetType = typeof(Dictionary<,>).MakeGenericType(genericArgs);
+                            }
+                        }
+                        else if (targetType == typeof(IEnumerable))
+                        {
+                            // Use object[] for non-generic IEnumerable
+                            targetType = typeof(object[]);
+                        }
+                    }
+
+                    propertyValue = jToken.ToObject(targetType);
+                }
+                // Handle numeric type conversions for primitive types
+                else if (targetType.IsPrimitive)
+                {
+                    propertyValue = Convert.ChangeType(propertyValue, targetType);
+                }
+                
+                dynamicProperties[propertyName] = propertyValue;
+            }
+        }
+
         public override bool TryGetMember(GetMemberBinder binder, out object result)
-        {            
-            var memberName = binder.Name;
+        {
+            string memberName = binder.Name;
             return dynamicProperties.TryGetValue(memberName, out result);
         }
 
         public override bool TrySetMember(SetMemberBinder binder, object value)
         {
-            var memberName = binder.Name;
+            string memberName = binder.Name;
             dynamicProperties[memberName] = value;
             return true;
         }
@@ -91,7 +185,7 @@ namespace NodeEditor
         public override IEnumerable<string> GetDynamicMemberNames()
         {
             return dynamicProperties.Keys;
-        }        
+        }
 
         public object this[string key]
         {

@@ -85,6 +85,11 @@ namespace NodeEditor
         public int Height { get; set; }
 
         /// <summary>
+        /// Type that implements IFlowControlNode for custom flow control logic
+        /// </summary>
+        public Type FlowControlHandler { get; set; }
+
+        /// <summary>
         /// Attribute for exposing method as node.
         /// </summary>
         /// <param name="name">Name of the node that will be displayed in the node caption.</param>
@@ -97,9 +102,10 @@ namespace NodeEditor
         /// <param name="xmlExportName">Name that will be used in the xml export of the graph.</param>
         /// <param name="width">Width of single node, or Auto if not determined</param>
         /// <param name="height">Height of single node, or Auto if not determined</param>
+        /// <param name="flowControlHandler">Type that implements IFlowControlNode for custom flow control logic</param>
         public NodeAttribute(string name = "Node", string menu = "", string category = "General",
             string description = "Some node.", bool isCallable = true, bool isExecutionInitiator = false, Type customEditor = null, string xmlExportName = "",
-            int width = Auto, int height = Auto)
+            int width = Auto, int height = Auto, Type flowControlHandler = null)
         {
             Name = name;
             Menu = menu;
@@ -111,6 +117,7 @@ namespace NodeEditor
             XmlExportName = xmlExportName;
             Width = width;
             Height = height;
+            FlowControlHandler = flowControlHandler;
         }
 
         /// <summary>
