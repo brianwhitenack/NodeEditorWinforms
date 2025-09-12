@@ -17,9 +17,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Drawing;
 using System.Data;
+using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
@@ -27,6 +26,10 @@ using System.Reflection;
 using System.Text;
 using System.Windows.Forms;
 using System.Xml;
+
+using Newtonsoft.Json;
+
+using NodeEditor.Serialization;
 
 namespace NodeEditor
 {
@@ -92,7 +95,7 @@ namespace NodeEditor
         /// </summary>
         public event Action<RectangleF> OnShowLocation = delegate { };
 
-        private readonly Dictionary<ToolStripMenuItem,int> allContextItems = new Dictionary<ToolStripMenuItem, int>();
+        private readonly Dictionary<ToolStripMenuItem, int> allContextItems = new Dictionary<ToolStripMenuItem, int>();
 
         private Point lastMouseLocation;
 
@@ -104,7 +107,7 @@ namespace NodeEditor
 
         private INodesContext context;
 
-        private bool breakExecution = false;        
+        private bool breakExecution = false;
 
         /// <summary>
         /// Default constructor
@@ -114,7 +117,7 @@ namespace NodeEditor
             InitializeComponent();
             timer.Interval = 30;
             timer.Tick += TimerOnTick;
-            timer.Start();        
+            timer.Start();
             KeyDown += OnKeyDown;
             SetStyle(ControlStyles.Selectable, true);
         }
@@ -132,8 +135,8 @@ namespace NodeEditor
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == 7)
-            {                
-                return;                
+            {
+                return;
             }
             base.WndProc(ref m);
         }
@@ -158,9 +161,9 @@ namespace NodeEditor
         private void NodesControl_Paint(object sender, PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
-            e.Graphics.InterpolationMode = InterpolationMode.HighQualityBilinear;            
+            e.Graphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
 
-            graph.Draw(e.Graphics, PointToClient(MousePosition), MouseButtons);            
+            graph.Draw(e.Graphics, PointToClient(MousePosition), MouseButtons);
 
             if (dragSocket != null)
             {
@@ -195,7 +198,7 @@ namespace NodeEditor
                 selectionEnd = e.Location;
             }
             if (mdown)
-            {                                            
+            {
                 foreach (var node in graph.Nodes.Where(x => x.IsSelected))
                 {
                     node.X += em.X - lastmpos.X;
@@ -206,18 +209,18 @@ namespace NodeEditor
                 if (graph.Nodes.Exists(x => x.IsSelected))
                 {
                     var n = graph.Nodes.FirstOrDefault(x => x.IsSelected);
-                    var bound = new RectangleF(new PointF(n.X,n.Y), n.GetNodeBounds());
-                    foreach (var node in graph.Nodes.Where(x=>x.IsSelected))
+                    var bound = new RectangleF(new PointF(n.X, n.Y), n.GetNodeBounds());
+                    foreach (var node in graph.Nodes.Where(x => x.IsSelected))
                     {
                         bound = RectangleF.Union(bound, new RectangleF(new PointF(node.X, node.Y), node.GetNodeBounds()));
                     }
                     OnShowLocation(bound);
                 }
                 Invalidate();
-                
+
                 if (dragSocket != null)
                 {
-                    var center = new PointF(dragSocket.X + dragSocket.Width/2f, dragSocket.Y + dragSocket.Height/2f);
+                    var center = new PointF(dragSocket.X + dragSocket.Width / 2f, dragSocket.Y + dragSocket.Height / 2f);
                     if (dragSocket.Input)
                     {
                         dragConnectionBegin.X += em.X - lastmpos.X;
@@ -232,19 +235,19 @@ namespace NodeEditor
                         dragConnectionEnd.Y += em.Y - lastmpos.Y;
                         OnShowLocation(new RectangleF(dragConnectionEnd, new SizeF(10, 10)));
                     }
-                    
+
                 }
                 lastmpos = em;
-            }            
+            }
 
             needRepaint = true;
         }
 
         private void NodesControl_MouseDown(object sender, MouseEventArgs e)
-        {                        
+        {
             if (e.Button == MouseButtons.Left)
             {
-                selectionStart  = PointF.Empty;                
+                selectionStart = PointF.Empty;
 
                 Focus();
 
@@ -259,9 +262,9 @@ namespace NodeEditor
 
                 if (node != null && !mdown)
                 {
-                    
+
                     node.IsSelected = true;
-                    
+
                     node.Order = graph.Nodes.Min(x => x.Order) - 1;
                     if (node.CustomEditor != null)
                     {
@@ -346,20 +349,20 @@ namespace NodeEditor
             var otype = Type.GetType(output.Type.FullName.Replace("&", ""), AssemblyResolver, TypeResolver);
             var itype = Type.GetType(input.Type.FullName.Replace("&", ""), AssemblyResolver, TypeResolver);
             if (otype == null || itype == null) return false;
-            
+
             // Check for exact match
             if (otype == itype) return true;
-            
+
             // Check for inheritance
             if (otype.IsSubclassOf(itype)) return true;
-            
+
             // Check for interface implementation
             if (itype.IsInterface && itype.IsAssignableFrom(otype)) return true;
-            
+
             // Special case: Check if output type can be assigned to input type
             // This handles cases like string[] to IEnumerable<string>
             if (itype.IsAssignableFrom(otype)) return true;
-            
+
             return false;
         }
 
@@ -401,8 +404,8 @@ namespace NodeEditor
                     var socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(e.Location));
                     if (socket != null)
                     {
-                        if (IsConnectable(dragSocket,socket) && dragSocket.Input != socket.Input)
-                        {                                                        
+                        if (IsConnectable(dragSocket, socket) && dragSocket.Input != socket.Input)
+                        {
                             var nc = new NodeConnection();
                             if (!dragSocket.Input)
                             {
@@ -428,7 +431,7 @@ namespace NodeEditor
                     }
                 }
             }
-           
+
             dragSocket = null;
             mdown = false;
             needRepaint = true;
@@ -436,13 +439,13 @@ namespace NodeEditor
 
         private void AddToMenu(ToolStripItemCollection items, NodeToken token, string path, EventHandler click)
         {
-            var pathParts = path.Split(new[] {'/'}, StringSplitOptions.RemoveEmptyEntries);
+            var pathParts = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
             var first = pathParts.FirstOrDefault();
             ToolStripMenuItem item = null;
             if (!items.ContainsKey(first))
             {
                 item = new ToolStripMenuItem(first);
-                item.Name = first;                
+                item.Name = first;
                 item.Tag = token;
                 items.Add(item);
             }
@@ -489,13 +492,13 @@ namespace NodeEditor
                             {
                                 Method = x,
                                 Attribute =
-                                    x.GetCustomAttributes(typeof (NodeAttribute), false)
+                                    x.GetCustomAttributes(typeof(NodeAttribute), false)
                                         .Cast<NodeAttribute>()
                                         .FirstOrDefault()
                             }).Where(x => x.Attribute != null);
 
                 var context = new ContextMenuStrip();
-                if (graph.Nodes.Exists(x=>x.IsSelected))
+                if (graph.Nodes.Exists(x => x.IsSelected))
                 {
                     context.Items.Add("Delete Node(s)", null, ((o, args) =>
                     {
@@ -509,12 +512,12 @@ namespace NodeEditor
                     {
                         ChangeSelectedNodesColor();
                     }));
-                    if(graph.Nodes.Count(x=>x.IsSelected)==2)
+                    if (graph.Nodes.Count(x => x.IsSelected) == 2)
                     {
                         var sel = graph.Nodes.Where(x => x.IsSelected).ToArray();
-                        context.Items.Add("Check Impact", null, ((o,args)=>
+                        context.Items.Add("Check Impact", null, ((o, args) =>
                         {
-                            if(HasImpact(sel[0],sel[1]) || HasImpact(sel[1],sel[0]))
+                            if (HasImpact(sel[0], sel[1]) || HasImpact(sel[1], sel[0]))
                             {
                                 MessageBox.Show("One node has impact on other.", "Impact detected.", MessageBoxButtons.OK, MessageBoxIcon.Information);
                             }
@@ -522,7 +525,7 @@ namespace NodeEditor
                             {
                                 MessageBox.Show("These nodes not impacts themselves.", "No impact.", MessageBoxButtons.OK, MessageBoxIcon.Information);
                             }
-                        }));                       
+                        }));
                     }
                     context.Items.Add(new ToolStripSeparator());
                 }
@@ -535,43 +538,52 @@ namespace NodeEditor
                     }
                     context.Items.Add(new ToolStripSeparator());
                 }
-                foreach (var node in nodes.OrderBy(x=>x.Attribute.Path))
+                foreach (var node in nodes.OrderBy(x => x.Attribute.Path))
                 {
-                    AddToMenu(context.Items, node, node.Attribute.Path, (s,ev) =>
+                    AddToMenu(context.Items, node, node.Attribute.Path, (s, ev) =>
                     {
-                        var tag = (s as ToolStripMenuItem).Tag as NodeToken;
-
-                        var nv = new NodeVisual();
-                        nv.X = lastMouseLocation.X;
-                        nv.Y = lastMouseLocation.Y;
-                        nv.Type = node.Method;
-                        nv.Callable = node.Attribute.IsCallable;
-                        nv.Name = node.Attribute.Name;
-                        nv.Order = graph.Nodes.Count;
-                        nv.ExecInit = node.Attribute.IsExecutionInitiator;
-                        nv.XmlExportName = node.Attribute.XmlExportName;
-                        nv.CustomWidth = node.Attribute.Width;
-                        nv.CustomHeight = node.Attribute.Height;
-
-                        if (node.Attribute.CustomEditor != null)
-                        {
-                            Control ctrl = null;
-                            nv.CustomEditor = ctrl = Activator.CreateInstance(node.Attribute.CustomEditor) as Control;
-                            if (ctrl != null)
-                            {
-                                ctrl.Tag = nv;                                
-                                Controls.Add(ctrl);                                                               
-                            }
-                            nv.LayoutEditor();
-                        }
-
-                        graph.Nodes.Add(nv);
-                        Refresh();
-                        needRepaint = true;
-                    });                    
+                        AddNodeToGraph(node);
+                    });
                 }
                 context.Show(MousePosition);
             }
+        }
+
+        private void AddNodeToGraph(NodeToken node)
+        {
+            NodeVisual nv = new NodeVisual();
+            nv.X = lastMouseLocation.X;
+            nv.Y = lastMouseLocation.Y;
+            nv.Type = node.Method;
+            nv.Callable = node.Attribute.IsCallable;
+            nv.Name = node.Attribute.Name;
+            nv.Order = graph.Nodes.Count;
+            nv.ExecInit = node.Attribute.IsExecutionInitiator;
+            nv.XmlExportName = node.Attribute.XmlExportName;
+            nv.CustomWidth = node.Attribute.Width;
+            nv.CustomHeight = node.Attribute.Height;
+
+            // Create flow control handler if specified
+            if (node.Attribute.FlowControlHandler != null)
+            {
+                nv.FlowControlHandler = Activator.CreateInstance(node.Attribute.FlowControlHandler) as IFlowControlNode;
+            }
+
+            if (node.Attribute.CustomEditor != null)
+            {
+                Control ctrl = null;
+                nv.CustomEditor = ctrl = Activator.CreateInstance(node.Attribute.CustomEditor) as Control;
+                if (ctrl != null)
+                {
+                    ctrl.Tag = nv;
+                    Controls.Add(ctrl);
+                }
+                nv.LayoutEditor();
+            }
+
+            graph.Nodes.Add(nv);
+            Refresh();
+            needRepaint = true;
         }
 
         private void ChangeSelectedNodesColor()
@@ -635,8 +647,77 @@ namespace NodeEditor
         /// Executes whole node graph (when called parameterless) or given node when specified.
         /// </summary>
         /// <param name="node"></param>
+        private void ExecuteFlowControlNode(NodeVisual flowControlNode, Queue<NodeVisual> nodeQueue)
+        {
+            if (flowControlNode.FlowControlHandler == null)
+                return;
+
+            DynamicNodeContext dc = flowControlNode.GetNodeContext();
+
+            // First execute the node to initialize outputs
+            flowControlNode.Execute(Context);
+
+            // Create the executeOutputPath callback
+            Action<string> executeOutputPath = (outputName) =>
+            {
+                NodeConnection connection = graph.Connections.FirstOrDefault(
+                    x => x.OutputNode == flowControlNode && x.OutputSocketName == outputName);
+
+                if (connection != null)
+                {
+                    if (outputName == "Exit")
+                    {
+                        // Queue for later execution
+                        nodeQueue.Enqueue(connection.InputNode);
+                    }
+                    else
+                    {
+                        // Execute immediately (for loop body, etc.)
+                        Execute(connection.InputNode);
+
+                        // After execution, transfer values back to the flow control node
+                        // Look for connections that feed back into the flow control node
+                        foreach (NodeConnection feedbackConnection in graph.Connections)
+                        {
+                            if (feedbackConnection.InputNode == flowControlNode)
+                            {
+                                // Check if this is a feedback input (marked with LoopFeedback attribute)
+                                ParameterInfo inputParam = flowControlNode.GetInputs()
+                                    .FirstOrDefault(x => x.Name == feedbackConnection.InputSocketName);
+
+                                if (inputParam != null &&
+                                    inputParam.GetCustomAttributes(typeof(LoopFeedbackAttribute), false).Any())
+                                {
+                                    // Transfer the value from the output node to the flow control node
+                                    DynamicNodeContext outputContext = feedbackConnection.OutputNode.GetNodeContext();
+                                    dc[feedbackConnection.InputSocketName] = outputContext[feedbackConnection.OutputSocketName];
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            // Create the shouldBreak callback
+            Func<bool> shouldBreak = () => breakExecution;
+
+            // Execute the flow control logic
+            flowControlNode.FlowControlHandler.ExecuteFlowControl(
+                Context,
+                dc,
+                executeOutputPath,
+                shouldBreak);
+
+            // Clear break flag if it was set
+            if (breakExecution)
+            {
+                breakExecution = false;
+                executionStack.Clear();
+            }
+        }
+
         public void Execute(NodeVisual node = null)
-        {            
+        {
             var nodeQueue = new Queue<NodeVisual>();
             nodeQueue.Enqueue(node);
 
@@ -656,32 +737,43 @@ namespace NodeEditor
                     init.Feedback = FeedbackType.Debug;
 
                     Resolve(init);
-                    init.Execute(Context);
-                    
-                    var connection =
-                        graph.Connections.FirstOrDefault(
-                            x => x.OutputNode == init && x.IsExecution && x.OutputSocket.Value != null && (x.OutputSocket.Value as ExecutionPath).IsSignaled);
-                    if (connection == null)
+
+                    // Check if this node has a flow control handler
+                    if (init.FlowControlHandler != null)
                     {
-                        connection = graph.Connections.FirstOrDefault(x => x.OutputNode == init && x.IsExecution && x.OutputSocket.IsMainExecution);
+                        // Handle flow control node
+                        ExecuteFlowControlNode(init, nodeQueue);
                     }
                     else
                     {
-                        executionStack.Push(init);
-                    }
-                    if (connection != null)
-                    {
-                        connection.InputNode.IsBackExecuted = false;
-                        //Execute(connection.InputNode);
-                        nodeQueue.Enqueue(connection.InputNode);
-                    }
-                    else
-                    {
-                        if (executionStack.Count > 0)
+                        // Normal node execution
+                        init.Execute(Context);
+
+                        var connection =
+                            graph.Connections.FirstOrDefault(
+                                x => x.OutputNode == init && x.IsExecution && x.OutputSocket.Value != null && (x.OutputSocket.Value as ExecutionPath).IsSignaled);
+                        if (connection == null)
                         {
-                            var back = executionStack.Pop();
-                            back.IsBackExecuted = true;
-                            Execute(back);
+                            connection = graph.Connections.FirstOrDefault(x => x.OutputNode == init && x.IsExecution && x.OutputSocket.IsMainExecution);
+                        }
+                        else
+                        {
+                            executionStack.Push(init);
+                        }
+                        if (connection != null)
+                        {
+                            connection.InputNode.IsBackExecuted = false;
+                            //Execute(connection.InputNode);
+                            nodeQueue.Enqueue(connection.InputNode);
+                        }
+                        else
+                        {
+                            if (executionStack.Count > 0)
+                            {
+                                var back = executionStack.Pop();
+                                back.IsBackExecuted = true;
+                                Execute(back);
+                            }
                         }
                     }
                 }
@@ -699,12 +791,12 @@ namespace NodeEditor
             var connections = graph.Connections.Where(x => x.OutputNode == startNode && !x.IsExecution);
             foreach (var connection in connections)
             {
-                if(connection.InputNode == endNode)
+                if (connection.InputNode == endNode)
                 {
                     return true;
                 }
                 bool nextImpact = HasImpact(connection.InputNode, endNode);
-                if(nextImpact)
+                if (nextImpact)
                 {
                     return true;
                 }
@@ -725,20 +817,26 @@ namespace NodeEditor
 
         private void ExecuteResolvingInternal(NodeVisual node)
         {
-            var icontext = (node.GetNodeContext() as DynamicNodeContext);
+            DynamicNodeContext icontext = node.GetNodeContext();
             foreach (var input in node.GetInputs())
             {
+                // Skip inputs marked with LoopFeedback attribute
+                if (input.GetCustomAttributes(typeof(LoopFeedbackAttribute), false).Any())
+                {
+                    continue;
+                }
+
                 var connection =
                     graph.Connections.FirstOrDefault(x => x.InputNode == node && x.InputSocketName == input.Name);
                 if (connection != null)
                 {
                     Resolve(connection.OutputNode);
-                    
+
                     connection.OutputNode.Execute(Context);
 
                     ExecuteResolvingInternal(connection.OutputNode);
-                    
-                    var ocontext = (connection.OutputNode.GetNodeContext() as DynamicNodeContext);
+
+                    DynamicNodeContext ocontext = connection.OutputNode.GetNodeContext();
                     icontext[connection.InputSocketName] = ocontext[connection.OutputSocketName];
                 }
             }
@@ -750,27 +848,33 @@ namespace NodeEditor
         /// <param name="node"></param>
         private void Resolve(NodeVisual node)
         {
-            var icontext = (node.GetNodeContext() as DynamicNodeContext);
+            DynamicNodeContext icontext = node.GetNodeContext();
             foreach (var input in node.GetInputs())
             {
+                // Skip inputs marked with LoopFeedback attribute
+                if (input.GetCustomAttributes(typeof(LoopFeedbackAttribute), false).Any())
+                {
+                    continue;
+                }
+
                 var connection = GetConnection(node.GUID + input.Name);
-                    //graph.Connections.FirstOrDefault(x => x.InputNode == node && x.InputSocketName == input.Name);
+                //graph.Connections.FirstOrDefault(x => x.InputNode == node && x.InputSocketName == input.Name);
                 if (connection != null)
                 {
                     Resolve(connection.OutputNode);
                     if (!connection.OutputNode.Callable)
-                    {                        
+                    {
                         connection.OutputNode.Execute(Context);
                     }
-                    var ocontext = (connection.OutputNode.GetNodeContext() as DynamicNodeContext);
-                    icontext[connection.InputSocketName] = ocontext[connection.OutputSocketName];                    
+                    DynamicNodeContext ocontext = connection.OutputNode.GetNodeContext();
+                    icontext[connection.InputSocketName] = ocontext[connection.OutputSocketName];
                 }
             }
         }
 
         private NodeConnection GetConnection(string v)
         {
-            if(rebuildConnectionDictionary)
+            if (rebuildConnectionDictionary)
             {
                 rebuildConnectionDictionary = false;
                 connectionDictionary.Clear();
@@ -800,7 +904,7 @@ namespace NodeEditor
                 xmlNode.SetAttribute("Name", node.XmlExportName);
                 xmlNode.SetAttribute("Id", node.GetGuid());
                 var xmlContext = (XmlElement)xmlNode.AppendChild(xml.CreateElement("Context"));
-                var context = node.GetNodeContext() as DynamicNodeContext;
+                DynamicNodeContext context = node.GetNodeContext();
                 foreach (var kv in context)
                 {
                     var ce = (XmlElement)xmlContext.AppendChild(xml.CreateElement("ContextMember"));
@@ -861,7 +965,7 @@ namespace NodeEditor
                 return (bw.BaseStream as MemoryStream).ToArray();
             }
         }
-        
+
         private static void SerializeNode(BinaryWriter bw, NodeVisual node)
         {
             bw.Write(node.GUID);
@@ -882,7 +986,7 @@ namespace NodeEditor
                 bw.Write(node.CustomEditor.GetType().FullName);
             }
             bw.Write(node.Type.Name);
-            var context = (node.GetNodeContext() as DynamicNodeContext).Serialize();
+            byte[] context = node.GetNodeContext().Serialize();
             bw.Write(context.Length);
             bw.Write(context);
             bw.Write(8); //additional data size per node
@@ -935,7 +1039,7 @@ namespace NodeEditor
 
         private NodeVisual DeserializeNode(BinaryReader br)
         {
-            var nv = new NodeVisual();
+            NodeVisual nv = new NodeVisual();
             nv.GUID = br.ReadString();
             nv.X = br.ReadSingle();
             nv.Y = br.ReadSingle();
@@ -949,17 +1053,17 @@ namespace NodeEditor
             var attribute = nv.Type.GetCustomAttributes(typeof(NodeAttribute), false)
                                         .Cast<NodeAttribute>()
                                         .FirstOrDefault();
-            if(attribute!=null)
+            if (attribute != null)
             {
                 nv.CustomWidth = attribute.Width;
                 nv.CustomHeight = attribute.Height;
             }
-            (nv.GetNodeContext() as DynamicNodeContext).Deserialize(br.ReadBytes(br.ReadInt32()));
+            nv.GetNodeContext().Deserialize(br.ReadBytes(br.ReadInt32()));
             var additional = br.ReadInt32(); //read additional data
             if (additional >= 4)
             {
                 nv.Int32Tag = br.ReadInt32();
-                if(additional >= 8)
+                if (additional >= 8)
                 {
                     nv.NodeColor = Color.FromArgb(br.ReadInt32());
                 }
@@ -995,6 +1099,180 @@ namespace NodeEditor
             Controls.Clear();
             Refresh();
             rebuildConnectionDictionary = true;
+        }
+
+        /// <summary>
+        /// Serializes current node graph to JSON string.
+        /// </summary>
+        public string SerializeToJson()
+        {
+            NodeGraphModel model = new NodeGraphModel();
+            model.Version = 1001;
+
+            // Serialize nodes
+            foreach (NodeVisual node in graph.Nodes)
+            {
+                NodeModel nodeModel = new NodeModel
+                {
+                    Guid = node.GUID,
+                    X = node.X,
+                    Y = node.Y,
+                    Callable = node.Callable,
+                    ExecInit = node.ExecInit,
+                    Name = node.Name,
+                    Order = node.Order,
+                    XmlExportName = node.XmlExportName,
+                    CustomWidth = node.CustomWidth,
+                    CustomHeight = node.CustomHeight,
+                    Int32Tag = node.Int32Tag,
+                    NodeColor = node.NodeColor.ToArgb(),
+                    MethodName = node.Type?.Name,
+                    Context = node.GetNodeContext().GetPropertiesForSerialization()
+                };
+
+                // Add custom editor info if present
+                if (node.CustomEditor != null)
+                {
+                    nodeModel.CustomEditor = new CustomEditorInfo
+                    {
+                        AssemblyName = node.CustomEditor.GetType().Assembly.GetName().Name,
+                        TypeName = node.CustomEditor.GetType().FullName
+                    };
+                }
+
+                // Add flow control handler if present
+                if (node.FlowControlHandler != null)
+                {
+                    nodeModel.FlowControlHandler = node.FlowControlHandler.GetType().FullName;
+                }
+
+                model.Nodes.Add(nodeModel);
+            }
+
+            // Serialize connections
+            foreach (var connection in graph.Connections)
+            {
+                var connModel = new ConnectionModel
+                {
+                    OutputNodeId = connection.OutputNode.GUID,
+                    OutputSocketName = connection.OutputSocketName,
+                    InputNodeId = connection.InputNode.GUID,
+                    InputSocketName = connection.InputSocketName
+                };
+                model.Connections.Add(connModel);
+            }
+
+            return JsonConvert.SerializeObject(model, Newtonsoft.Json.Formatting.Indented);
+        }
+
+        /// <summary>
+        /// Deserializes node graph from JSON string.
+        /// </summary>
+        public void DeserializeFromJson(string json)
+        {
+            var model = JsonConvert.DeserializeObject<NodeGraphModel>(json);
+            if (model == null)
+                return;
+
+            rebuildConnectionDictionary = true;
+            graph.Connections.Clear();
+            graph.Nodes.Clear();
+            Controls.Clear();
+
+            // Deserialize nodes
+            foreach (NodeModel nodeModel in model.Nodes)
+            {
+                NodeVisual node = new NodeVisual();
+                node.GUID = nodeModel.Guid ?? Guid.NewGuid().ToString();
+                node.X = nodeModel.X;
+                node.Y = nodeModel.Y;
+                node.Callable = nodeModel.Callable;
+                node.ExecInit = nodeModel.ExecInit;
+                node.Name = nodeModel.Name;
+                node.Order = nodeModel.Order;
+                node.XmlExportName = nodeModel.XmlExportName;
+                node.CustomWidth = nodeModel.CustomWidth;
+                node.CustomHeight = nodeModel.CustomHeight;
+                node.Int32Tag = nodeModel.Int32Tag;
+                node.NodeColor = Color.FromArgb(nodeModel.NodeColor);
+
+                // Set method
+                if (!string.IsNullOrEmpty(nodeModel.MethodName) && Context != null)
+                {
+                    node.Type = Context.GetType().GetMethod(nodeModel.MethodName);
+
+                    if (node.Type != null)
+                    {
+                        NodeAttribute attribute = node.Type.GetCustomAttributes(typeof(NodeAttribute), false)
+                            .Cast<NodeAttribute>()
+                            .FirstOrDefault();
+                        if (attribute != null)
+                        {
+                            if (node.CustomWidth == 0)
+                                node.CustomWidth = attribute.Width;
+                            if (node.CustomHeight == 0)
+                                node.CustomHeight = attribute.Height;
+
+                            // Create flow control handler if specified
+                            if (attribute.FlowControlHandler != null)
+                            {
+                                node.FlowControlHandler = Activator.CreateInstance(attribute.FlowControlHandler) as IFlowControlNode;
+                            }
+                        }
+                    }
+                }
+
+                // Set context
+                if (nodeModel.Context != null)
+                {
+                    node.GetNodeContext().SetPropertiesFromSerialization(nodeModel.Context, node);
+                }
+
+                // Create custom editor
+                if (nodeModel.CustomEditor != null &&
+                    !string.IsNullOrEmpty(nodeModel.CustomEditor.AssemblyName) &&
+                    !string.IsNullOrEmpty(nodeModel.CustomEditor.TypeName))
+                {
+                    try
+                    {
+                        node.CustomEditor = Activator.CreateInstance(
+                            AppDomain.CurrentDomain,
+                            nodeModel.CustomEditor.AssemblyName,
+                            nodeModel.CustomEditor.TypeName).Unwrap() as Control;
+
+                        if (node.CustomEditor != null)
+                        {
+                            node.CustomEditor.Tag = node;
+                            Controls.Add(node.CustomEditor);
+                            node.LayoutEditor();
+                        }
+                    }
+                    catch
+                    {
+                        throw;
+                    }
+                }
+
+                graph.Nodes.Add(node);
+            }
+
+            // Deserialize connections
+            foreach (var connModel in model.Connections)
+            {
+                var connection = new NodeConnection();
+                connection.OutputNode = graph.Nodes.FirstOrDefault(x => x.GUID == connModel.OutputNodeId);
+                connection.OutputSocketName = connModel.OutputSocketName;
+                connection.InputNode = graph.Nodes.FirstOrDefault(x => x.GUID == connModel.InputNodeId);
+                connection.InputSocketName = connModel.InputSocketName;
+
+                if (connection.OutputNode != null && connection.InputNode != null)
+                {
+                    graph.Connections.Add(connection);
+                }
+            }
+
+            rebuildConnectionDictionary = true;
+            Refresh();
         }
     }
 }

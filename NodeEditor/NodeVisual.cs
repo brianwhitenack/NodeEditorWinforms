@@ -58,7 +58,8 @@ namespace NodeEditor
         internal bool ExecInit { get; set; }
         internal bool IsSelected { get; set; }
         internal FeedbackType Feedback { get; set; }
-        private object nodeContext { get; set; } 
+        internal IFlowControlNode FlowControlHandler { get; set; }
+        private DynamicNodeContext nodeContext { get; set; } 
         public Control CustomEditor { get; internal set; }
         internal string GUID = Guid.NewGuid().ToString();
         internal Color NodeColor = Color.LightCyan;
@@ -91,11 +92,11 @@ namespace NodeEditor
                 return socketCache;
             }
 
-            var socketList = new List<SocketVisual>();
+            List<SocketVisual> socketList = new List<SocketVisual>();
             float curInputH = HeaderHeight + ComponentPadding;
             float curOutputH = HeaderHeight + ComponentPadding;
 
-            var NodeWidth = GetNodeBounds().Width;
+            float NodeWidth = GetNodeBounds().Width;
 
             if (Callable)
             {
@@ -142,7 +143,7 @@ namespace NodeEditor
 
                 curInputH += SocketVisual.SocketHeight + ComponentPadding;
             }
-            var ctx = GetNodeContext() as DynamicNodeContext;
+            DynamicNodeContext ctx = GetNodeContext();
             foreach (var output in GetOutputs())
             {
                 var socket = new SocketVisual();
@@ -170,7 +171,7 @@ namespace NodeEditor
         /// <summary>
         /// Returns node context which is dynamic type. It will contain all node default input/output properties.
         /// </summary>
-        public object GetNodeContext()
+        public DynamicNodeContext GetNodeContext()
         {
             if (nodeContext == null)
             {
@@ -411,7 +412,7 @@ namespace NodeEditor
         {
             context.CurrentProcessingNode = this;
 
-            var dc = (GetNodeContext() as DynamicNodeContext);
+            DynamicNodeContext dc = GetNodeContext();
             var parametersDict = Type.GetParameters().OrderBy(x => x.Position).ToDictionary(x => x.Name, x => dc[x.Name]);
             var parameters = parametersDict.Values.ToArray();
 
