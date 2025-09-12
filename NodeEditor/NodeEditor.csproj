@@ -49,6 +49,7 @@
   <ItemGroup>
     <Compile Include="DynamicNodeContext.cs" />
     <Compile Include="DynamicNodeContextConverter.cs" />
+    <Compile Include="DynamicTypeAttribute.cs" />
     <Compile Include="ExecutionPath.cs" />
     <Compile Include="FeedbackType.cs" />
     <Compile Include="FlowControls\ForEachFlowControl.cs" />
@@ -73,6 +74,7 @@
     </Compile>
     <Compile Include="Serialization\NodeGraphModel.cs" />
     <Compile Include="SocketVisual.cs" />
+    <Compile Include="TypePropagation.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="NodesControl.resx">

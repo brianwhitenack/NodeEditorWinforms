@@ -53,7 +53,9 @@
     <Compile Include="FormMathSample.Designer.cs">
       <DependentUpon>FormMathSample.cs</DependentUpon>
     </Compile>
-    <Compile Include="MathContext.cs" />
+    <Compile Include="PartCalculation.cs" />
+    <Compile Include="Measurement.cs" />
+    <Compile Include="Part.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="FormMathSample.resx">

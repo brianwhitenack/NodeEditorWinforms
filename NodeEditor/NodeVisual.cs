@@ -65,6 +65,9 @@ namespace NodeEditor
         internal Color NodeColor = Color.LightCyan;
         public bool IsBackExecuted { get; internal set; }
         private SocketVisual[] socketCache;
+        
+        // Dynamic typing support
+        private Dictionary<string, SocketTypeInfo> socketTypeInfo = new Dictionary<string, SocketTypeInfo>();
 
         /// <summary>
         /// Tag for various puposes - may be used freely.
@@ -128,9 +131,9 @@ namespace NodeEditor
                 curInputH += SocketVisual.SocketHeight + ComponentPadding;
             }
 
-            foreach (var input in GetInputs())
+            foreach (ParameterInfo input in GetInputs())
             {
-                var socket = new SocketVisual();
+                SocketVisual socket = new SocketVisual();
                 socket.Type = input.ParameterType;
                 socket.Height = SocketVisual.SocketHeight;
                 socket.Name = input.Name;
@@ -138,22 +141,43 @@ namespace NodeEditor
                 socket.X = X;
                 socket.Y = Y + curInputH;
                 socket.Input = true;
+                
+                // Use runtime type if available for dynamic sockets
+                if (socketTypeInfo.ContainsKey(input.Name))
+                {
+                    socket.RuntimeType = socketTypeInfo[input.Name].RuntimeType;
+                }
+                else
+                {
+                    socket.RuntimeType = socket.Type;
+                }
 
                 socketList.Add(socket);
 
                 curInputH += SocketVisual.SocketHeight + ComponentPadding;
             }
             DynamicNodeContext ctx = GetNodeContext();
-            foreach (var output in GetOutputs())
+            foreach (ParameterInfo output in GetOutputs())
             {
-                var socket = new SocketVisual();
+                SocketVisual socket = new SocketVisual();
                 socket.Type = output.ParameterType;
                 socket.Height = SocketVisual.SocketHeight;
                 socket.Name = output.Name;
                 socket.Width = SocketVisual.SocketHeight;
                 socket.X = X + NodeWidth - SocketVisual.SocketHeight;
                 socket.Y = Y + curOutputH;
-                socket.Value = ctx[socket.Name];              
+                socket.Value = ctx[socket.Name];
+                
+                // Use runtime type if available for dynamic sockets
+                if (socketTypeInfo.ContainsKey(output.Name))
+                {
+                    socket.RuntimeType = socketTypeInfo[output.Name].RuntimeType;
+                }
+                else
+                {
+                    socket.RuntimeType = socket.Type;
+                }
+                
                 socketList.Add(socket);
 
                 curOutputH += SocketVisual.SocketHeight + ComponentPadding;
@@ -445,6 +469,73 @@ namespace NodeEditor
             {
                 CustomEditor.Location = new Point((int)( X + 1 + 40 + SocketVisual.SocketHeight), (int) (Y + HeaderHeight + 4));
             }
+        }
+        
+        /// <summary>
+        /// Updates the runtime type for a socket based on connected input
+        /// </summary>
+        internal void UpdateSocketType(string socketName, Type newType)
+        {
+            if (!socketTypeInfo.ContainsKey(socketName))
+            {
+                // Initialize type info if not present
+                SocketVisual socket = GetSockets().FirstOrDefault(s => s.Name == socketName);
+                if (socket != null)
+                {
+                    socketTypeInfo[socketName] = new SocketTypeInfo(socket.Type);
+                }
+            }
+            
+            if (socketTypeInfo.ContainsKey(socketName))
+            {
+                socketTypeInfo[socketName].RuntimeType = newType;
+                DiscardCache(); // Force socket refresh
+            }
+        }
+        
+        /// <summary>
+        /// Gets the runtime type for a socket
+        /// </summary>
+        internal Type GetSocketRuntimeType(string socketName)
+        {
+            if (socketTypeInfo.ContainsKey(socketName))
+            {
+                return socketTypeInfo[socketName].RuntimeType;
+            }
+            
+            SocketVisual socket = GetSockets().FirstOrDefault(s => s.Name == socketName);
+            return socket?.Type;
+        }
+        
+        /// <summary>
+        /// Propagates type information through the node using attribute-based system
+        /// </summary>
+        internal void PropagateTypes(NodesGraph graph)
+        {
+            TypePropagation.PropagateNodeTypes(this, graph);
+        }
+        
+        /// <summary>
+        /// Resets socket types to their original static types
+        /// </summary>
+        internal void ResetSocketTypes()
+        {
+            foreach (SocketVisual socket in GetSockets())
+            {
+                if (socketTypeInfo.ContainsKey(socket.Name))
+                {
+                    socketTypeInfo[socket.Name].RuntimeType = socketTypeInfo[socket.Name].StaticType;
+                }
+            }
+            DiscardCache();
+        }
+        
+        /// <summary>
+        /// Checks if this node has dynamic type support
+        /// </summary>
+        internal bool HasDynamicTypeSupport()
+        {
+            return TypePropagation.IsDynamicNode(this);
         }
     }
 }

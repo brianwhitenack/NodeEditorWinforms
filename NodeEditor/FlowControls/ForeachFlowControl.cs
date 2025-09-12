@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace NodeEditor.FlowControls
 {
@@ -9,6 +10,12 @@ namespace NodeEditor.FlowControls
     /// </summary>
     public class ForEachFlowControl : IFlowControlNode
     {
+        private const string INPUT_COLLECTION = "inputCollection";
+        private const string CURRENT_ITEM_IN_LOOP = "currentItemInLoop";
+        private const string LOOP_RESULT = "loopResult";
+        private const string FOR_EACH_RESULT = "forEachResult";
+        private const string FOR_EACH_ITEM_LOOP = "forEachItemLoop";
+        private const string EXIT = "Exit";
         public void ExecuteFlowControl(
             INodesContext context,
             DynamicNodeContext nodeContext,
@@ -16,18 +23,39 @@ namespace NodeEditor.FlowControls
             Func<bool> shouldBreak)
         {
             // Get the collection from the node context
-            IEnumerable collection = nodeContext["inputCollection"] as IEnumerable;
+            IEnumerable collection = nodeContext[INPUT_COLLECTION] as IEnumerable;
             
             if (collection == null)
             {
                 // If no collection, output empty array
-                nodeContext["forEachResult"] = Array.Empty<object>();
-                executeOutputPath("Exit");
+                nodeContext[FOR_EACH_RESULT] = Array.Empty<object>();
+                executeOutputPath(EXIT);
                 return;
             }
 
-            // List to collect transformed results
-            List<object> results = new List<object>();
+            // Get the runtime type for forEachResult to create properly typed collection
+            Type resultType = typeof(object);
+            NodeVisual currentNode = context.CurrentProcessingNode;
+            if (currentNode != null)
+            {
+                Type runtimeType = currentNode.GetSocketRuntimeType(FOR_EACH_RESULT);
+                if (runtimeType != null && runtimeType.IsArray)
+                {
+                    resultType = runtimeType.GetElementType();
+                }
+                else if (runtimeType != null && runtimeType.IsGenericType)
+                {
+                    Type[] genericArgs = runtimeType.GetGenericArguments();
+                    if (genericArgs.Length > 0)
+                    {
+                        resultType = genericArgs[0];
+                    }
+                }
+            }
+            
+            // Create a properly typed list for results
+            Type listType = typeof(List<>).MakeGenericType(resultType);
+            System.Collections.IList results = Activator.CreateInstance(listType) as System.Collections.IList;
             int index = 0;
 
             // Iterate through the collection
@@ -40,16 +68,16 @@ namespace NodeEditor.FlowControls
                 }
 
                 // Set the current item in the context
-                nodeContext["currentItemInLoop"] = item;
+                nodeContext[CURRENT_ITEM_IN_LOOP] = item;
                 
                 // Clear the transformed item from previous iteration
-                nodeContext["loopResult"] = null;
+                nodeContext[LOOP_RESULT] = null;
                 
                 // Execute the transform path - this should set transformedItem
-                executeOutputPath("forEachItemLoop");
+                executeOutputPath(FOR_EACH_ITEM_LOOP);
                 
                 // Collect the transformed result
-                object transformedItem = nodeContext["loopResult"];
+                object transformedItem = nodeContext[LOOP_RESULT];
                 if (transformedItem != null)
                 {
                     results.Add(transformedItem);
@@ -63,11 +91,49 @@ namespace NodeEditor.FlowControls
                 index++;
             }
 
-            // Set the final results array
-            nodeContext["forEachResult"] = results.ToArray();
+            // Set the final results in the appropriate format based on the expected output type
+            if (currentNode != null)
+            {
+                Type expectedOutputType = currentNode.GetSocketRuntimeType(FOR_EACH_RESULT);
+                if (expectedOutputType != null)
+                {
+                    if (expectedOutputType.IsArray)
+                    {
+                        // Create properly typed array
+                        Array typedArray = Array.CreateInstance(resultType, results.Count);
+                        results.CopyTo(typedArray, 0);
+                        nodeContext[FOR_EACH_RESULT] = typedArray;
+                    }
+                    else if (expectedOutputType.IsGenericType && 
+                             (expectedOutputType.GetGenericTypeDefinition() == typeof(IEnumerable<>) ||
+                              expectedOutputType.GetGenericTypeDefinition() == typeof(IList<>) ||
+                              expectedOutputType.GetGenericTypeDefinition() == typeof(ICollection<>)))
+                    {
+                        // For interface types, return the List<T> we already created
+                        nodeContext[FOR_EACH_RESULT] = results;
+                    }
+                    else
+                    {
+                        // Default to array for unknown types
+                        Array typedArray = Array.CreateInstance(resultType, results.Count);
+                        results.CopyTo(typedArray, 0);
+                        nodeContext[FOR_EACH_RESULT] = typedArray;
+                    }
+                }
+                else
+                {
+                    // Fallback to object array
+                    nodeContext[FOR_EACH_RESULT] = results.Cast<object>().ToArray();
+                }
+            }
+            else
+            {
+                // Fallback to object array
+                nodeContext[FOR_EACH_RESULT] = results.Cast<object>().ToArray();
+            }
 
             // Execute the exit path with the complete results
-            executeOutputPath("Exit");
+            executeOutputPath(EXIT);
         }
     }
 }
