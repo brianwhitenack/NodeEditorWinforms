@@ -143,5 +143,87 @@ namespace NodeEditor
 
             return result;
         }
+
+        /// <summary>
+        /// Tests if a point is near a connection line
+        /// </summary>
+        /// <param name="point">Point to test</param>
+        /// <param name="connection">Connection to test against</param>
+        /// <param name="threshold">Distance threshold for hit detection</param>
+        /// <returns>True if point is within threshold distance of the connection</returns>
+        public bool IsPointNearConnection(PointF point, NodeConnection connection, float threshold = 10f)
+        {
+            SocketVisual osoc = connection.OutputNode.GetSockets().FirstOrDefault(x => x.Name == connection.OutputSocketName);
+            if (osoc == null) return false;
+            
+            SocketVisual isoc = connection.InputNode.GetSockets().FirstOrDefault(x => x.Name == connection.InputSocketName);
+            if (isoc == null) return false;
+
+            RectangleF outputSocketBounds = osoc.GetBounds();
+            RectangleF inputSocketBounds = isoc.GetBounds();
+            PointF begin = outputSocketBounds.Location + new SizeF(outputSocketBounds.Width / 2f, outputSocketBounds.Height / 2f);
+            PointF end = inputSocketBounds.Location + new SizeF(inputSocketBounds.Width / 2f, inputSocketBounds.Height / 2f);
+
+            return IsPointNearCurve(point, begin, end, threshold);
+        }
+
+        /// <summary>
+        /// Tests if a point is near the curved connection line
+        /// </summary>
+        private static bool IsPointNearCurve(PointF point, PointF output, PointF input, float threshold)
+        {
+            const int testPoints = 20; // Fewer test points for performance
+            float minDistance = float.MaxValue;
+
+            for (int i = 0; i < testPoints; i++)
+            {
+                float amount = i / (float)(testPoints - 1);
+                
+                float lx = Lerp(output.X, input.X, amount);
+                double d = Math.Min(Math.Abs(input.X - output.X), 100);
+                PointF a = new PointF((float)Scale(amount, 0, 1, output.X, output.X + d), output.Y);
+                PointF b = new PointF((float)Scale(amount, 0, 1, input.X - d, input.X), input.Y);
+
+                double bas = Sat(Scale(amount, 0.1, 0.9, 0, 1));
+                double cos = Math.Cos(bas * Math.PI);
+                if (cos < 0)
+                {
+                    cos = -Math.Pow(-cos, 0.2);
+                }
+                else
+                {
+                    cos = Math.Pow(cos, 0.2);
+                }
+                amount = (float)cos * -0.5f + 0.5f;
+
+                PointF curvePoint = Lerp(a, b, amount);
+                
+                float distance = (float)Math.Sqrt(Math.Pow(point.X - curvePoint.X, 2) + Math.Pow(point.Y - curvePoint.Y, 2));
+                minDistance = Math.Min(minDistance, distance);
+                
+                if (minDistance <= threshold)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Finds the connection at the specified point
+        /// </summary>
+        /// <param name="point">Point to test</param>
+        /// <param name="threshold">Distance threshold for hit detection</param>
+        /// <returns>The connection at the point, or null if none found</returns>
+        public NodeConnection GetConnectionAtPoint(PointF point, float threshold = 10f)
+        {
+            foreach (NodeConnection connection in Connections)
+            {
+                if (IsPointNearConnection(point, connection, threshold))
+                {
+                    return connection;
+                }
+            }
+            return null;
+        }
     }
 }

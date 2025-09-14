@@ -9,7 +9,12 @@
       "Bash(dotnet build)",
       "Bash(msbuild:*)",
       "Bash(dotnet build:*)",
-      "Bash(MSBuild.exe:*)"
+      "Bash(MSBuild.exe:*)",
+      "Bash(\"C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe\" NodeEditorNodeEditor.csproj)",
+      "Bash(where msbuild)",
+      "Bash(\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe\" NodeEditorNodeEditor.csproj)",
+      "Bash(\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe\" \"NodeEditor\\NodeEditor.csproj\")",
+      "Bash(\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe\" NodeEditorWinforms.sln)"
     ],
     "deny": [],
     "ask": []

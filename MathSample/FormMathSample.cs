@@ -8,6 +8,8 @@ using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 
+using Newtonsoft.Json;
+
 namespace MathSample
 {
     public partial class FormMathSample : Form
@@ -18,13 +20,43 @@ namespace MathSample
         public FormMathSample()
         {
             InitializeComponent();
+
+            context.Measurements = new List<Measurement>()
+            {
+                new Measurement()
+                {
+                    Type = "Beam",
+                    Length = 50,
+                    Count = 2,
+                    Selections = new Dictionary<string, object>()
+                    {
+                        { "BeamType", "Header" },
+                        { "Material", "LVL" },
+                        { "Grade", "#1" },
+                        { "Thickness", 2 },
+                        { "Width", 4 }
+                    }
+                }
+            };
+
+            txtMeasurements.Text = JsonConvert.SerializeObject(context.Measurements, Formatting.Indented);
+
+            context.OnExecutionFinished += Context_OnExecutionFinished;
+        }
+
+        private void Context_OnExecutionFinished()
+        {
+            txtParts.Text = JsonConvert.SerializeObject(context.Parts, Formatting.Indented);
         }
 
         private void FormMathSample_Load(object sender, EventArgs e)
         {
             //Context assignment
             controlNodeEditor.nodesControl.Context = context;
-            controlNodeEditor.nodesControl.OnNodeContextSelected += NodesControlOnOnNodeContextSelected; 
+            controlNodeEditor.nodesControl.OnNodeContextSelected += NodesControlOnOnNodeContextSelected;
+            
+            // Add default nodes
+            AddDefaultNodes();
         }
 
         private void NodesControlOnOnNodeContextSelected(object o)
@@ -55,8 +87,6 @@ namespace MathSample
                         byte[] graphData = controlNodeEditor.nodesControl.Serialize();
                         File.WriteAllBytes(saveFileDialog.FileName, graphData);
                     }
-                    MessageBox.Show("Node graph saved successfully!", "Save Complete", 
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception ex)
                 {
@@ -89,8 +119,6 @@ namespace MathSample
                         byte[] graphData = File.ReadAllBytes(openFileDialog.FileName);
                         controlNodeEditor.nodesControl.Deserialize(graphData);
                     }
-                    MessageBox.Show("Node graph loaded successfully!", "Load Complete", 
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 catch (Exception ex)
                 {
@@ -98,6 +126,19 @@ namespace MathSample
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
+        }
+
+        private void AddDefaultNodes()
+        {
+            // Only add default nodes if the graph is empty
+            var existingNodes = controlNodeEditor.nodesControl.GetNodes();
+            if (existingNodes.Count > 0) return;
+
+            // Add Starter node by method name
+            controlNodeEditor.nodesControl.AddNodeByMethodName("Starter", 50, 50);
+            
+            // Add Parts List node by method name
+            controlNodeEditor.nodesControl.AddNodeByMethodName("PartsList", 300, 50);
         }
     }
 }

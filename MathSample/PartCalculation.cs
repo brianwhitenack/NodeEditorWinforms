@@ -12,10 +12,77 @@ namespace MathSample
     // method corresponds to a node by attribute decoration
     public class PartCalculation : INodesContext
     {
+        public event Action OnExecutionFinished;
+
         public NodeVisual CurrentProcessingNode { get; set; }
         public event Action<string, NodeVisual, FeedbackType, object, bool> FeedbackInfo;
 
-        [Node("Create Part", "Parts", "Basic", "Create a part", true)]
+        public List<Measurement> Measurements { get; set; }
+        public List<Part> Parts { get; set; }
+
+        public PartCalculation()
+        {
+            Measurements = new List<Measurement>();
+            Parts = new List<Part>();
+        }
+
+        public void FinishExecution()
+        {
+            OnExecutionFinished?.Invoke();
+        }
+
+        [Node("Measurement List", "Measurements", "Basic", "Get the current measurement list", false)]
+        public void MeasurementList(out List<Measurement> measurements)
+        {
+            measurements = Measurements;
+        }
+
+        [Node("Number Selection", "Measurements", "Basic", "Select a number from the measurement", false)]
+        public void NumberSelection(Measurement measurement, string selectionName, out double selectionValue)
+        {
+            if (measurement.Selections.TryGetValue(selectionName, out object value) && double.TryParse(value?.ToString(), out double parsedValue))
+            {
+                selectionValue = parsedValue;
+            }
+            else
+            {
+                selectionValue = 0;
+            }
+        }
+
+        [Node("String Selection", "Measurements", "Basic", "Select a string from the measurement", false)]
+        public void StringSelection(Measurement measurement, string selectionName, out string selectionValue)
+        {
+            if (measurement.Selections.TryGetValue(selectionName, out object value))
+            {
+                selectionValue = value.ToString();
+            }
+            else
+            {
+                selectionValue = string.Empty;
+            }
+        }
+
+        [Node("Measurement Length", "Measurements", "Basic", "Get the length of the measurement", false)]
+        public void MeasurementLength(Measurement measurement, out double length)
+        {
+            length = measurement.Length;
+        }
+
+        [Node("If Else", "Flow Control", "Basic", "Standard If Else flow control", false, flowControlHandler: typeof(IfElseFlowControl))]
+        public void IfElse(bool condition, ExecutionPath enter, out ExecutionPath ifTrue, out ExecutionPath ifFalse)
+        {
+            ifTrue = new ExecutionPath();
+            ifFalse = new ExecutionPath();
+        }
+
+        [Node("Boolean Value", "Constants", "Basic", "Allows to output a simple boolean value.", false)]
+        public void BooleanValue(bool inValue, out bool outValue)
+        {
+            outValue = inValue;
+        }
+
+        [Node("Create Part", "Parts", "Basic", "Create a part")]
         public void CreatePart(string sku, string description, string package, float quantity, string unitOfMeasure, out Part part)
         {
             part = new Part
@@ -29,9 +96,9 @@ namespace MathSample
         }
 
         [Node("Parts List", "Parts", "Basic", "Create a list of parts", false)]
-        public void PartsList(ExecutionPath calculationEnd, IEnumerable<Part> parts)
+        public void PartsList(ExecutionPath calculationEnd, List<Part> parts)
         {
-
+            Parts = parts;
         }
 
         [Node("String Value", "Constants", "Basic", "Allows to output a simple string value.", false)]
@@ -46,15 +113,15 @@ namespace MathSample
             outValue = inValue;
         }
 
-        [Node("For Each", "Loops", "Functional", "Transforms each item in a collection and returns the results.", true,
+        [Node("For Each", "Flow Control", "Functional", "Transforms each item in a collection and returns the results.", true,
             flowControlHandler: typeof(ForEachFlowControl), Width = 250)]
         [DynamicNode]
         public void ForEach(
-            [DynamicType(TypeGroup = "InputType")] IEnumerable<object> inputCollection, 
+            [DynamicType(TypeGroup = "InputType")] List<object> inputCollection, 
             [LoopFeedback][DynamicType(TypeGroup = "OutputType")] object loopResult,
             [DynamicType(TypeGroup = "InputType", ExtractElementType = true, DerivedFrom = nameof(inputCollection))] out object currentItemInLoop,
             out ExecutionPath forEachItemLoop,
-            [DynamicType(TypeGroup = "OutputType", WrapInCollection = true)] out IEnumerable<object> forEachResult)
+            [DynamicType(TypeGroup = "OutputType", WrapInCollection = true)] out List<object> forEachResult)
         {
             // Initialize outputs - actual values will be set by the flow control handler
             currentItemInLoop = null;
@@ -62,38 +129,48 @@ namespace MathSample
             forEachResult = null;
         }
 
+        [Node("Pass Through", "Flow Control", "Functional", "Pass through a variable with control flow.", true)]
+        [DynamicNode]
+        public void PassThrough(
+            [DynamicType(TypeGroup = "Input")] object input,
+            [DynamicType(TypeGroup = "Input")] out object output)
+        {
+           output = input;
+        }
+
         [Node("Value", "Constants", "Basic", "Allows to output a simple value.", false)]
-        public void InputValue(float inValue, out float outValue)
+        public void InputValue(double inValue, out double outValue)
         {
             outValue = inValue;
         }
 
         [Node("Add", "Math", "Basic", "Adds two input values.", false)]
-        public void Add(float a, float b, out float result)
+        public void Add(double a, double b, out double result)
         {
             result = a + b;
         }
 
-        [Node("Subtract", "Math", "Basic", "Substracts two input values.", true)]
-        public void Subtract(float a, float b, out float result)
+        [Node("Subtract", "Math", "Basic", "Substracts two input values.", false)]
+        public void Subtract(double a, double b, out double result)
         {
             result = a - b;
         }
 
-        [Node("Multiply", "Math", "Basic", "Multiplies two input values.", true)]
-        public void Multiply(float a, float b, out float result)
+        [Node("Multiply", "Math", "Basic", "Multiplies two input values.", false)]
+        public void Multiply(float a, double b, out double result)
         {
             result = a * b;
         }
 
-        [Node("Divide", "Math", "Basic", "Divides two input values.", true)]
-        public void Divide(float a, float b, out float result)
+        [Node("Divide", "Math", "Basic", "Divides two input values.", false)]
+        public void Divide(float a, double b, out double result)
         {
             result = a / b;
         }
 
-        [Node("Show Value", "Debug", "Basic", "Shows input value in the message box.")]
-        public void ShowMessageBox(object x)
+        [Node("Show Value", "Debug", "Basic", "Shows input value in the message box.", true)]
+        [DynamicNode]
+        public void ShowMessageBox([DynamicType(TypeGroup = "Input")] object x)
         {
             string valueToShow;
             if (x == null)
@@ -112,28 +189,32 @@ namespace MathSample
             MessageBox.Show(valueToShow, "Show Value", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        [Node("To Upper", "Operators", "String", "Converts a string to uppercase.", true)]
+        [Node("To Upper", "Operators", "String", "Converts a string to uppercase.", false)]
         public void ToUpper(string input, out string output)
         {
             output = input?.ToUpper();
         }
 
-        [Node("Concatenate", "Operators", "String", "Concatenates two strings.", true)]
+        [Node("Concatenate", "Operators", "String", "Concatenates two strings.", false)]
         public void Concatenate(string a, string b, out string result)
         {
             result = a + b;
         }
 
-        [Node("To String", "Operators", "String", "Converts to a string.", true)]
-        public void ToStringNode(object a, out string result)
+        [Node("To String", "Operators", "String", "Converts to a string.", false)]
+        [DynamicNode]
+        public void ToStringNode([DynamicType(TypeGroup = "Input")] object a, out string result)
         {
             result = a?.ToString();
         }
 
-        [Node("To List", "Operators", "List", "Converts to a string.", true)]
-        public void ToListNode(object a, out List<Object> list)
+        [Node("To List", "Operators", "List", "Creates a list containing a single item.", false)]
+        [DynamicNode]
+        public void ToListNode(
+            [DynamicType(TypeGroup = "Input")] object item,
+            [DynamicType(TypeGroup = "Input", WrapInCollection = true)] out List<object> list)
         {
-            list = new List<object>() { a };
+            list = new List<object>() { item };
         }
 
         [Node("Starter", "Helper", "Basic", "Starts execution", true, true)]
