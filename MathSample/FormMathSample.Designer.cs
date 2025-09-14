@@ -36,9 +36,11 @@
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabMeasurements = new System.Windows.Forms.TabPage();
-            this.tabParts = new System.Windows.Forms.TabPage();
             this.txtMeasurements = new System.Windows.Forms.TextBox();
+            this.tabParts = new System.Windows.Forms.TabPage();
             this.txtParts = new System.Windows.Forms.TextBox();
+            this.btnNew = new System.Windows.Forms.ToolStripButton();
+            this.btnUpdateMeasurements = new System.Windows.Forms.Button();
             this.toolStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
             this.splitContainer1.Panel1.SuspendLayout();
@@ -53,7 +55,8 @@
             // 
             this.toolStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.btnSave,
-            this.btnLoad});
+            this.btnLoad,
+            this.btnNew});
             this.toolStrip1.Location = new System.Drawing.Point(0, 0);
             this.toolStrip1.Name = "toolStrip1";
             this.toolStrip1.Size = new System.Drawing.Size(957, 25);
@@ -118,6 +121,7 @@
             // 
             // tabMeasurements
             // 
+            this.tabMeasurements.Controls.Add(this.btnUpdateMeasurements);
             this.tabMeasurements.Controls.Add(this.txtMeasurements);
             this.tabMeasurements.Location = new System.Drawing.Point(4, 22);
             this.tabMeasurements.Name = "tabMeasurements";
@@ -127,26 +131,28 @@
             this.tabMeasurements.Text = "Measurements";
             this.tabMeasurements.UseVisualStyleBackColor = true;
             // 
+            // txtMeasurements
+            // 
+            this.txtMeasurements.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtMeasurements.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.txtMeasurements.Location = new System.Drawing.Point(3, 32);
+            this.txtMeasurements.Multiline = true;
+            this.txtMeasurements.Name = "txtMeasurements";
+            this.txtMeasurements.Size = new System.Drawing.Size(134, 424);
+            this.txtMeasurements.TabIndex = 0;
+            // 
             // tabParts
             // 
             this.tabParts.Controls.Add(this.txtParts);
             this.tabParts.Location = new System.Drawing.Point(4, 22);
             this.tabParts.Name = "tabParts";
             this.tabParts.Padding = new System.Windows.Forms.Padding(3);
-            this.tabParts.Size = new System.Drawing.Size(311, 459);
+            this.tabParts.Size = new System.Drawing.Size(140, 459);
             this.tabParts.TabIndex = 1;
             this.tabParts.Text = "Parts";
             this.tabParts.UseVisualStyleBackColor = true;
-            // 
-            // txtMeasurements
-            // 
-            this.txtMeasurements.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.txtMeasurements.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.txtMeasurements.Location = new System.Drawing.Point(3, 3);
-            this.txtMeasurements.Multiline = true;
-            this.txtMeasurements.Name = "txtMeasurements";
-            this.txtMeasurements.Size = new System.Drawing.Size(134, 453);
-            this.txtMeasurements.TabIndex = 0;
             // 
             // txtParts
             // 
@@ -154,8 +160,30 @@
             this.txtParts.Location = new System.Drawing.Point(3, 3);
             this.txtParts.Multiline = true;
             this.txtParts.Name = "txtParts";
-            this.txtParts.Size = new System.Drawing.Size(305, 453);
+            this.txtParts.Size = new System.Drawing.Size(134, 453);
             this.txtParts.TabIndex = 0;
+            // 
+            // btnNew
+            // 
+            this.btnNew.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
+            this.btnNew.Image = ((System.Drawing.Image)(resources.GetObject("btnNew.Image")));
+            this.btnNew.ImageTransparentColor = System.Drawing.Color.Magenta;
+            this.btnNew.Name = "btnNew";
+            this.btnNew.Size = new System.Drawing.Size(35, 22);
+            this.btnNew.Text = "New";
+            this.btnNew.Click += new System.EventHandler(this.btnNew_Click);
+            // 
+            // btnUpdateMeasurements
+            // 
+            this.btnUpdateMeasurements.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnUpdateMeasurements.Location = new System.Drawing.Point(3, 6);
+            this.btnUpdateMeasurements.Name = "btnUpdateMeasurements";
+            this.btnUpdateMeasurements.Size = new System.Drawing.Size(134, 23);
+            this.btnUpdateMeasurements.TabIndex = 2;
+            this.btnUpdateMeasurements.Text = "Update";
+            this.btnUpdateMeasurements.UseVisualStyleBackColor = true;
+            this.btnUpdateMeasurements.Click += new System.EventHandler(this.btnUpdateMeasurements_Click);
             // 
             // FormMathSample
             // 
@@ -195,6 +223,8 @@
         private System.Windows.Forms.TabPage tabParts;
         private System.Windows.Forms.TextBox txtMeasurements;
         private System.Windows.Forms.TextBox txtParts;
+        private System.Windows.Forms.ToolStripButton btnNew;
+        private System.Windows.Forms.Button btnUpdateMeasurements;
     }
 }
 
