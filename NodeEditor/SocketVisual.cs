@@ -33,12 +33,31 @@ namespace NodeEditor
         public float Y { get; set; }
         public float Width { get; set; }
         public float Height { get; set; }
-        public string Name { get; set; }
+
+        private string _name;
+        private string _displayName;
+
+        public string Name
+        {
+            get => _name;
+            set
+            {
+                _name = value;
+                // Cache the display name when the name is set
+                _displayName = ToTitleCase(value);
+            }
+        }
+
+        /// <summary>
+        /// Gets the cached display name in Title Case format
+        /// </summary>
+        public string DisplayName => _displayName ?? (_displayName = ToTitleCase(_name));
+
         public Type Type { get; set; }
         public bool Input { get; set; }
         public object Value { get; set; }
         public bool IsMainExecution { get; set; }
-        
+
         /// <summary>
         /// Runtime type for dynamic sockets (may differ from static Type)
         /// </summary>
@@ -47,6 +66,34 @@ namespace NodeEditor
         public bool IsExecution
         {
             get { return Type.Name.Replace("&", "") == typeof (ExecutionPath).Name; }
+        }
+
+        /// <summary>
+        /// Converts a camelCase or PascalCase string to Title Case with spaces
+        /// </summary>
+        private string ToTitleCase(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return name;
+
+            // Insert spaces before uppercase letters (except the first one)
+            var result = new StringBuilder();
+            for (int i = 0; i < name.Length; i++)
+            {
+                if (i > 0 && char.IsUpper(name[i]) && !char.IsUpper(name[i - 1]))
+                {
+                    result.Append(' ');
+                }
+                result.Append(name[i]);
+            }
+
+            // Ensure first letter is uppercase
+            if (result.Length > 0 && char.IsLower(result[0]))
+            {
+                result[0] = char.ToUpper(result[0]);
+            }
+
+            return result.ToString();
         }
 
         public void Draw(Graphics g, Point mouseLocation, MouseButtons mouseButtons)
@@ -63,20 +110,21 @@ namespace NodeEditor
 
             g.SmoothingMode = SmoothingMode.HighSpeed;
             g.InterpolationMode = InterpolationMode.Low;
-            
+
+            // Use cached display name
             if (Input)
             {
                 StringFormat sf = new StringFormat();
                 sf.Alignment = StringAlignment.Near;
-                sf.LineAlignment = StringAlignment.Center;                
-                g.DrawString(Name,SystemFonts.SmallCaptionFont, fontBrush, new RectangleF(X+Width+2,Y,1000,Height), sf);
+                sf.LineAlignment = StringAlignment.Center;
+                g.DrawString(DisplayName, SystemFonts.SmallCaptionFont, fontBrush, new RectangleF(X+Width+2,Y,1000,Height), sf);
             }
             else
             {
                 StringFormat sf = new StringFormat();
                 sf.Alignment = StringAlignment.Far;
                 sf.LineAlignment = StringAlignment.Center;
-                g.DrawString(Name, SystemFonts.SmallCaptionFont, fontBrush, new RectangleF(X-1000, Y, 1000, Height), sf);
+                g.DrawString(DisplayName, SystemFonts.SmallCaptionFont, fontBrush, new RectangleF(X-1000, Y, 1000, Height), sf);
             }
 
             g.InterpolationMode = InterpolationMode.HighQualityBilinear;

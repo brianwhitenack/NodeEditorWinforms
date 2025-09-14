@@ -194,6 +194,21 @@ namespace NodeEditor
         }
 
         /// <summary>
+        /// Updates socket positions when the node moves without recalculating everything
+        /// </summary>
+        internal void UpdateSocketPositions(float dx, float dy)
+        {
+            if (socketCache != null)
+            {
+                foreach (var socket in socketCache)
+                {
+                    socket.X += dx;
+                    socket.Y += dy;
+                }
+            }
+        }
+
+        /// <summary>
         /// Returns node context which is dynamic type. It will contain all node default input/output properties.
         /// </summary>
         public DynamicNodeContext GetNodeContext()
@@ -341,39 +356,170 @@ namespace NodeEditor
         }
 
         /// <summary>
+        /// Converts a camelCase or PascalCase string to Title Case with spaces
+        /// </summary>
+        private string ToTitleCase(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return name;
+
+            // Insert spaces before uppercase letters (except the first one)
+            var result = new StringBuilder();
+            for (int i = 0; i < name.Length; i++)
+            {
+                if (i > 0 && char.IsUpper(name[i]) && !char.IsUpper(name[i - 1]))
+                {
+                    result.Append(' ');
+                }
+                result.Append(name[i]);
+            }
+
+            // Ensure first letter is uppercase
+            if (result.Length > 0 && char.IsLower(result[0]))
+            {
+                result[0] = char.ToUpper(result[0]);
+            }
+
+            return result.ToString();
+        }
+
+        /// <summary>
+        /// Calculates the automatic width based on socket names
+        /// </summary>
+        private float CalculateAutoWidth()
+        {
+            float minWidth = NodeWidth; // Minimum width
+            float padding = 20; // Padding between input and output names
+            float socketPadding = 4; // Padding from socket to text
+            float edgePadding = 5; // Padding from edge of node
+
+            // If we have cached sockets, use their cached display names
+            if (socketCache != null)
+            {
+                float maxInputWidth = 0;
+                float maxOutputWidth = 0;
+
+                foreach (var socket in socketCache)
+                {
+                    SizeF textSize = TextRenderer.MeasureText(socket.DisplayName, SystemFonts.SmallCaptionFont);
+                    if (socket.Input)
+                    {
+                        maxInputWidth = Math.Max(maxInputWidth, textSize.Width);
+                    }
+                    else
+                    {
+                        maxOutputWidth = Math.Max(maxOutputWidth, textSize.Width);
+                    }
+                }
+
+                // Calculate width for node name
+                SizeF nameSize = TextRenderer.MeasureText(Name, SystemFonts.DefaultFont);
+                float nameWidth = nameSize.Width + 10; // Add some padding for the name
+
+                // Calculate total width needed
+                float socketBasedWidth = SocketVisual.SocketHeight + socketPadding + maxInputWidth + padding +
+                                          maxOutputWidth + socketPadding + SocketVisual.SocketHeight + edgePadding * 2;
+
+                // Return the maximum of minimum width, name width, and socket-based width
+                return Math.Max(Math.Max(minWidth, nameWidth), socketBasedWidth);
+            }
+            else
+            {
+                // Fallback: calculate without caching (initial calculation)
+                float maxInputWidth = 0;
+                ParameterInfo[] inputs = GetInputs();
+                foreach (ParameterInfo input in inputs)
+                {
+                    string displayName = ToTitleCase(input.Name);
+                    SizeF textSize = TextRenderer.MeasureText(displayName, SystemFonts.SmallCaptionFont);
+                    maxInputWidth = Math.Max(maxInputWidth, textSize.Width);
+                }
+
+                // Add execution input if callable
+                if (Callable && !ExecInit)
+                {
+                    SizeF textSize = TextRenderer.MeasureText("Enter", SystemFonts.SmallCaptionFont);
+                    maxInputWidth = Math.Max(maxInputWidth, textSize.Width);
+                }
+
+                // Calculate maximum width needed for output socket names
+                float maxOutputWidth = 0;
+                ParameterInfo[] outputs = GetOutputs();
+                foreach (ParameterInfo output in outputs)
+                {
+                    string displayName = ToTitleCase(output.Name);
+                    SizeF textSize = TextRenderer.MeasureText(displayName, SystemFonts.SmallCaptionFont);
+                    maxOutputWidth = Math.Max(maxOutputWidth, textSize.Width);
+                }
+
+                // Add execution output if callable
+                if (Callable)
+                {
+                    SizeF textSize = TextRenderer.MeasureText("Exit", SystemFonts.SmallCaptionFont);
+                    maxOutputWidth = Math.Max(maxOutputWidth, textSize.Width);
+                }
+
+                // Calculate width for node name
+                SizeF nameSize = TextRenderer.MeasureText(Name, SystemFonts.DefaultFont);
+                float nameWidth = nameSize.Width + 10; // Add some padding for the name
+
+                // Calculate total width needed
+                // Socket width + socket padding + text width + center padding + text width + socket padding + socket width
+                float socketBasedWidth = SocketVisual.SocketHeight + socketPadding + maxInputWidth + padding +
+                                          maxOutputWidth + socketPadding + SocketVisual.SocketHeight + edgePadding * 2;
+
+                // Return the maximum of minimum width, name width, and socket-based width
+                return Math.Max(Math.Max(minWidth, nameWidth), socketBasedWidth);
+            }
+        }
+
+        /// <summary>
         /// Returns current size of the node.
-        /// </summary>        
+        /// </summary>
         public SizeF GetNodeBounds()
         {
-            var csize = new SizeF();
+            SizeF csize = new SizeF();
             if (CustomEditor != null)
             {
                 csize = new SizeF(CustomEditor.ClientSize.Width + 2 + 80 +SocketVisual.SocketHeight*2,
-                    CustomEditor.ClientSize.Height + HeaderHeight + 8);                
+                    CustomEditor.ClientSize.Height + HeaderHeight + 8);
             }
 
-            var inputs = GetInputs().Length;
-            var outputs = GetOutputs().Length;
+            int inputs = GetInputs().Length;
+            int outputs = GetOutputs().Length;
             if (Callable)
             {
                 inputs++;
                 outputs++;
             }
-            var h = HeaderHeight + Math.Max(inputs*(SocketVisual.SocketHeight + ComponentPadding),
+            float h = HeaderHeight + Math.Max(inputs*(SocketVisual.SocketHeight + ComponentPadding),
                 outputs*(SocketVisual.SocketHeight + ComponentPadding)) + ComponentPadding*2f;
 
-            csize.Width = Math.Max(csize.Width, NodeWidth);
-            csize.Height = Math.Max(csize.Height, h);
-            if(CustomWidth >= 0)
+            // Use automatic width if no custom width is specified
+            float width;
+            if (CustomWidth >= 0)
             {
-                csize.Width = CustomWidth;
+                width = CustomWidth;
             }
-            if(CustomHeight >= 0)
+            else
             {
-                csize.Height = CustomHeight;
+                // Calculate automatic width based on socket names
+                float autoWidth = CalculateAutoWidth();
+                width = Math.Max(csize.Width, autoWidth);
             }
 
-            return new SizeF(csize.Width, csize.Height);
+            // Use custom height if specified, otherwise use calculated height
+            float height;
+            if (CustomHeight >= 0)
+            {
+                height = CustomHeight;
+            }
+            else
+            {
+                height = Math.Max(csize.Height, h);
+            }
+
+            return new SizeF(width, height);
         }
 
         /// <summary>

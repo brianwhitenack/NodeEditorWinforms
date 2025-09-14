@@ -111,6 +111,18 @@ namespace NodeEditor
 
         private bool breakExecution = false;
 
+        // Panning support
+        private bool isPanning = false;
+        private Point panStartPoint;
+        private PointF panOffset = new PointF(0, 0);
+        private bool rightMouseMoved = false;
+
+        // Zoom support
+        private float zoomLevel = 1.0f;
+        private const float MIN_ZOOM = 0.1f;
+        private const float MAX_ZOOM = 3.0f;
+        private const float ZOOM_STEP = 0.1f;
+
         /// <summary>
         /// Default constructor
         /// </summary>
@@ -121,7 +133,10 @@ namespace NodeEditor
             timer.Tick += TimerOnTick;
             timer.Start();
             KeyDown += OnKeyDown;
+            MouseWheel += OnMouseWheel;
             SetStyle(ControlStyles.Selectable, true);
+            // Enable double buffering for smoother rendering
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
         }
 
         private void ContextOnFeedbackInfo(string message, NodeVisual nodeVisual, FeedbackType type, object tag, bool breakExecution)
@@ -151,6 +166,49 @@ namespace NodeEditor
             }
         }
 
+        private void OnMouseWheel(object sender, MouseEventArgs e)
+        {
+            // Store the old zoom level
+            float oldZoom = zoomLevel;
+
+            // Calculate new zoom level
+            float zoomDelta = e.Delta > 0 ? ZOOM_STEP : -ZOOM_STEP;
+            float newZoom = oldZoom + zoomDelta;
+            zoomLevel = Math.Max(MIN_ZOOM, Math.Min(MAX_ZOOM, newZoom));
+
+            // Calculate zoom ratio
+            float zoomRatio = zoomLevel / oldZoom;
+
+            // Adjust pan offset to keep mouse position fixed in world space
+            // The point under the mouse should remain at the same screen position
+            panOffset.X = e.Location.X - (e.Location.X - panOffset.X) * zoomRatio;
+            panOffset.Y = e.Location.Y - (e.Location.Y - panOffset.Y) * zoomRatio;
+
+            needRepaint = true;
+        }
+
+        /// <summary>
+        /// Convert screen coordinates to world coordinates (considering zoom and pan)
+        /// </summary>
+        private PointF ScreenToWorld(Point screenPoint)
+        {
+            return new PointF(
+                (screenPoint.X - panOffset.X) / zoomLevel,
+                (screenPoint.Y - panOffset.Y) / zoomLevel
+            );
+        }
+
+        /// <summary>
+        /// Convert world coordinates to screen coordinates (considering zoom and pan)
+        /// </summary>
+        private PointF WorldToScreen(PointF worldPoint)
+        {
+            return new PointF(
+                worldPoint.X * zoomLevel + panOffset.X,
+                worldPoint.Y * zoomLevel + panOffset.Y
+            );
+        }
+
         private void TimerOnTick(object sender, EventArgs eventArgs)
         {
             if (DesignMode) return;
@@ -160,18 +218,70 @@ namespace NodeEditor
             }
         }
 
+        private void DrawGrid(Graphics g)
+        {
+            // Grid settings
+            int baseGridSize = 20;
+            float gridSize = baseGridSize * zoomLevel; // Scale grid with zoom
+            Color gridColor = Color.FromArgb(60, 0, 0, 0); // Light gray grid
+            Color majorGridColor = Color.FromArgb(100, 0, 0, 0); // Darker for major lines
+
+            using (Pen gridPen = new Pen(gridColor, 1))
+            using (Pen majorGridPen = new Pen(majorGridColor, 1))
+            {
+                // Calculate grid offset based on pan and zoom
+                float offsetX = panOffset.X % gridSize;
+                float offsetY = panOffset.Y % gridSize;
+
+                // Draw vertical lines
+                for (float x = offsetX; x < Width; x += gridSize)
+                {
+                    // Every 5th line is a major grid line
+                    int gridIndex = (int)Math.Round((x - panOffset.X) / gridSize);
+                    bool isMajor = gridIndex % 5 == 0;
+                    g.DrawLine(isMajor ? majorGridPen : gridPen, x, 0, x, Height);
+                }
+
+                // Draw horizontal lines
+                for (float y = offsetY; y < Height; y += gridSize)
+                {
+                    // Every 5th line is a major grid line
+                    int gridIndex = (int)Math.Round((y - panOffset.Y) / gridSize);
+                    bool isMajor = gridIndex % 5 == 0;
+                    g.DrawLine(isMajor ? majorGridPen : gridPen, 0, y, Width, y);
+                }
+            }
+        }
+
         private void NodesControl_Paint(object sender, PaintEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
             e.Graphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
 
-            graph.Draw(e.Graphics, PointToClient(MousePosition), MouseButtons);
+            // Draw the background grid first (not transformed)
+            DrawGrid(e.Graphics);
+
+            // Save the original transform
+            var originalTransform = e.Graphics.Transform;
+
+            // Apply zoom and pan transformation
+            e.Graphics.TranslateTransform(panOffset.X, panOffset.Y);
+            e.Graphics.ScaleTransform(zoomLevel, zoomLevel);
+
+            // Transform mouse position for drawing
+            PointF transformedMouse = ScreenToWorld(PointToClient(MousePosition));
+
+            graph.Draw(e.Graphics, Point.Round(transformedMouse), MouseButtons);
 
             if (dragSocket != null)
             {
-                Pen pen = new Pen(Color.Black, 2);
+                Pen pen = new Pen(Color.Black, 2 / zoomLevel); // Adjust pen width for zoom
+                // dragConnectionBegin and dragConnectionEnd are already in world space
                 NodesGraph.DrawConnection(e.Graphics, pen, dragConnectionBegin, dragConnectionEnd);
             }
+
+            // Restore transform for UI elements
+            e.Graphics.Transform = originalTransform;
 
             if (selectionStart != PointF.Empty)
             {
@@ -195,6 +305,22 @@ namespace NodeEditor
         private void NodesControl_MouseMove(object sender, MouseEventArgs e)
         {
             Point em = PointToScreen(e.Location);
+
+            // Handle right-click panning
+            if (isPanning && e.Button == MouseButtons.Right)
+            {
+                rightMouseMoved = true;
+                float dx = e.Location.X - panStartPoint.X;
+                float dy = e.Location.Y - panStartPoint.Y;
+
+                panOffset.X += dx;
+                panOffset.Y += dy;
+
+                panStartPoint = e.Location;
+                needRepaint = true;
+                return;
+            }
+
             if (selectionStart != PointF.Empty)
             {
                 selectionEnd = e.Location;
@@ -204,24 +330,44 @@ namespace NodeEditor
                 if (!isDraggingConnection && dragSocket == null)
                 {
                     // Regular node dragging - only when not dragging sockets or connections
-                    foreach (NodeVisual node in graph.Nodes.Where(x => x.IsSelected))
-                    {
-                        node.X += em.X - lastmpos.X;
-                        node.Y += em.Y - lastmpos.Y;
-                        node.DiscardCache();
-                        node.LayoutEditor();
-                    }
-                    if (graph.Nodes.Exists(x => x.IsSelected))
-                    {
-                        NodeVisual n = graph.Nodes.FirstOrDefault(x => x.IsSelected);
-                        RectangleF bound = new RectangleF(new PointF(n.X, n.Y), n.GetNodeBounds());
-                        foreach (NodeVisual node in graph.Nodes.Where(x => x.IsSelected))
-                        {
-                            bound = RectangleF.Union(bound, new RectangleF(new PointF(node.X, node.Y), node.GetNodeBounds()));
-                        }
-                        OnShowLocation(bound);
-                    }
+                    // Scale the movement by zoom level
+                    float dx = (em.X - lastmpos.X) / zoomLevel;
+                    float dy = (em.Y - lastmpos.Y) / zoomLevel;
 
+                    // Cache selected nodes to avoid multiple LINQ queries
+                    var selectedNodes = graph.Nodes.Where(x => x.IsSelected).ToList();
+
+                    if (selectedNodes.Count > 0)
+                    {
+                        // Move all selected nodes
+                        foreach (NodeVisual node in selectedNodes)
+                        {
+                            node.X += dx;
+                            node.Y += dy;
+                            // Efficiently update socket positions without full recalculation
+                            node.UpdateSocketPositions(dx, dy);
+                            // Only layout custom editors if present
+                            if (node.CustomEditor != null)
+                            {
+                                node.LayoutEditor();
+                            }
+                        }
+
+                        // Calculate bounds only if needed for auto-scroll
+                        // This is expensive so we can skip it for most drag operations
+                        // Only calculate every few pixels of movement
+                        if (Math.Abs(dx) > 5 || Math.Abs(dy) > 5)
+                        {
+                            NodeVisual firstNode = selectedNodes[0];
+                            RectangleF bound = new RectangleF(new PointF(firstNode.X, firstNode.Y), firstNode.GetNodeBounds());
+                            for (int i = 1; i < selectedNodes.Count; i++)
+                            {
+                                NodeVisual node = selectedNodes[i];
+                                bound = RectangleF.Union(bound, new RectangleF(new PointF(node.X, node.Y), node.GetNodeBounds()));
+                            }
+                            OnShowLocation(bound);
+                        }
+                    }
                 }
 
                 if (dragSocket != null)
@@ -229,43 +375,40 @@ namespace NodeEditor
                     if (isDraggingConnection)
                     {
                         // Connection dragging: floating end follows mouse, fixed end stays at socket
-                        PointF mousePos = PointToClient(em);
+                        // Keep positions in world space
+                        PointF mousePos = ScreenToWorld(PointToClient(em));
 
-                        // Get the fixed socket center (the one we're NOT dragging from)
+                        // Get the fixed socket center (the one we're NOT dragging from) in world space
                         PointF fixedSocketCenter = new PointF(dragSocket.X + dragSocket.Width / 2f, dragSocket.Y + dragSocket.Height / 2f);
 
                         if (dragSocket.Input)
                         {
                             // Dragging towards a new input, keep current input socket fixed
-                            dragConnectionBegin = mousePos; // Floating end follows mouse
-                            dragConnectionEnd = fixedSocketCenter; // Fixed end stays at input socket
-                            OnShowLocation(new RectangleF(dragConnectionBegin, new SizeF(10, 10)));
+                            dragConnectionBegin = mousePos; // Floating end follows mouse (world space)
+                            dragConnectionEnd = fixedSocketCenter; // Fixed end stays at input socket (world space)
                         }
                         else
                         {
                             // Dragging towards a new output, keep current output socket fixed
-                            dragConnectionBegin = fixedSocketCenter; // Fixed end stays at output socket
-                            dragConnectionEnd = mousePos; // Floating end follows mouse
-                            OnShowLocation(new RectangleF(dragConnectionEnd, new SizeF(10, 10)));
+                            dragConnectionBegin = fixedSocketCenter; // Fixed end stays at output socket (world space)
+                            dragConnectionEnd = mousePos; // Floating end follows mouse (world space)
                         }
                     }
                     else
                     {
-                        // Regular socket dragging: existing logic
+                        // Regular socket dragging: positions in world space
                         PointF center = new PointF(dragSocket.X + dragSocket.Width / 2f, dragSocket.Y + dragSocket.Height / 2f);
+                        PointF mouseWorldPos = ScreenToWorld(PointToClient(em));
+
                         if (dragSocket.Input)
                         {
-                            dragConnectionBegin.X += em.X - lastmpos.X;
-                            dragConnectionBegin.Y += em.Y - lastmpos.Y;
+                            dragConnectionBegin = mouseWorldPos;
                             dragConnectionEnd = center;
-                            OnShowLocation(new RectangleF(dragConnectionBegin, new SizeF(10, 10)));
                         }
                         else
                         {
                             dragConnectionBegin = center;
-                            dragConnectionEnd.X += em.X - lastmpos.X;
-                            dragConnectionEnd.Y += em.Y - lastmpos.Y;
-                            OnShowLocation(new RectangleF(dragConnectionEnd, new SizeF(10, 10)));
+                            dragConnectionEnd = mouseWorldPos;
                         }
                     }
                 }
@@ -281,7 +424,10 @@ namespace NodeEditor
         /// <returns>True if connection dragging was initiated</returns>
         private bool TryStartConnectionDrag(Point location)
         {
-            NodeConnection hitConnection = graph.GetConnectionAtPoint(new PointF(location.X, location.Y));
+            // Convert screen coordinates to world coordinates
+            PointF worldLocation = ScreenToWorld(location);
+
+            NodeConnection hitConnection = graph.GetConnectionAtPoint(worldLocation);
             if (hitConnection == null || mdown) return false;
 
             // Start dragging the connection
@@ -314,16 +460,16 @@ namespace NodeEditor
                     // Closer to output - disconnect from output, keep input fixed, drag towards new output
                     dragSocket = inputSocket;
                     dragSocketNode = hitConnection.InputNode;
-                    dragConnectionBegin = new PointF(location.X, location.Y); // Floating end starts at mouse
+                    dragConnectionBegin = worldLocation; // Floating end starts at mouse (world space)
                     dragConnectionEnd = inputCenter; // Fixed end stays at input socket
                 }
                 else
                 {
-                    // Closer to input - disconnect from input, keep output fixed, drag towards new input  
+                    // Closer to input - disconnect from input, keep output fixed, drag towards new input
                     dragSocket = outputSocket;
                     dragSocketNode = hitConnection.OutputNode;
                     dragConnectionBegin = outputCenter; // Fixed end stays at output socket
-                    dragConnectionEnd = new PointF(location.X, location.Y); // Floating end starts at mouse
+                    dragConnectionEnd = worldLocation; // Floating end starts at mouse (world space)
                 }
             }
 
@@ -343,12 +489,21 @@ namespace NodeEditor
         /// <returns>The selected node if header was clicked, null otherwise</returns>
         private NodeVisual TrySelectNodeHeader(Point location)
         {
+            // Convert screen coordinates to world coordinates
+            PointF worldLocation = ScreenToWorld(location);
+
             NodeVisual node = graph.Nodes.OrderBy(x => x.Order).FirstOrDefault(
-                x => new RectangleF(new PointF(x.X, x.Y), x.GetHeaderSize()).Contains(location));
+                x => new RectangleF(new PointF(x.X, x.Y), x.GetHeaderSize()).Contains(worldLocation));
 
             if (node != null && !mdown)
             {
-                node.IsSelected = true;
+                // If the node wasn't already selected, select it
+                // If it was already selected, keep it selected (for multi-drag)
+                if (!node.IsSelected)
+                {
+                    node.IsSelected = true;
+                }
+
                 node.Order = graph.Nodes.Min(x => x.Order) - 1;
                 if (node.CustomEditor != null)
                 {
@@ -372,13 +527,16 @@ namespace NodeEditor
         {
             if (targetNode != null || mdown) return targetNode;
 
+            // Convert screen coordinates to world coordinates
+            PointF worldLocation = ScreenToWorld(location);
+
             NodeVisual nodeWhole = graph.Nodes.OrderBy(x => x.Order).FirstOrDefault(
-                x => new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds()).Contains(location));
+                x => new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds()).Contains(worldLocation));
 
             if (nodeWhole == null) return null;
 
             targetNode = nodeWhole;
-            SocketVisual socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(location));
+            SocketVisual socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(worldLocation));
 
             if (socket == null) return targetNode;
 
@@ -423,8 +581,10 @@ namespace NodeEditor
                 dragSocketNode = nodeWhole;
             }
 
-            dragConnectionBegin = new PointF(location.X, location.Y);
-            dragConnectionEnd = new PointF(location.X, location.Y);
+            // Convert to world coordinates for connection dragging
+            PointF worldLoc = ScreenToWorld(location);
+            dragConnectionBegin = worldLoc;
+            dragConnectionEnd = worldLoc;
             mdown = true;
             lastmpos = PointToScreen(location);
 
@@ -438,7 +598,15 @@ namespace NodeEditor
                 selectionStart = PointF.Empty;
                 Focus();
 
-                if ((ModifierKeys & Keys.Shift) != Keys.Shift)
+                // Check if clicking on an already selected node first
+                PointF worldLocation = ScreenToWorld(e.Location);
+                NodeVisual clickedNode = graph.Nodes.OrderBy(x => x.Order).FirstOrDefault(
+                    x => new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds()).Contains(worldLocation));
+
+                bool clickedOnSelectedNode = clickedNode != null && clickedNode.IsSelected;
+
+                // Only clear selection if not shift-clicking and not clicking on already selected node
+                if ((ModifierKeys & Keys.Shift) != Keys.Shift && !clickedOnSelectedNode)
                 {
                     graph.Nodes.ForEach(x => x.IsSelected = false);
                 }
@@ -467,6 +635,14 @@ namespace NodeEditor
                 {
                     OnNodeContextSelected(selectedNode.GetNodeContext());
                 }
+            }
+            else if (e.Button == MouseButtons.Right)
+            {
+                // Start panning mode
+                isPanning = true;
+                panStartPoint = e.Location;
+                rightMouseMoved = false;
+                Cursor = Cursors.SizeAll;
             }
 
             needRepaint = true;
@@ -511,26 +687,40 @@ namespace NodeEditor
 
         private void NodesControl_MouseUp(object sender, MouseEventArgs e)
         {
+            // Handle right-click panning end
+            if (e.Button == MouseButtons.Right)
+            {
+                isPanning = false;
+                Cursor = Cursors.Default;
+            }
+
             if (selectionStart != PointF.Empty)
             {
-                RectangleF rect = MakeRect(selectionStart, selectionEnd);
+                // Convert selection rectangle to world coordinates
+                PointF worldStart = ScreenToWorld(Point.Round(selectionStart));
+                PointF worldEnd = ScreenToWorld(Point.Round(selectionEnd));
+                RectangleF rect = MakeRect(worldStart, worldEnd);
+
                 graph.Nodes.ForEach(
-                    x => x.IsSelected = rect.Contains(new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds())));
+                    x => x.IsSelected = rect.IntersectsWith(new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds())));
                 selectionStart = PointF.Empty;
             }
 
             // Handle connection dragging
             if (isDraggingConnection && dragSocket != null && dragConnection != null)
             {
+                // Convert mouse location to world coordinates
+                PointF worldLocation = ScreenToWorld(e.Location);
+
                 NodeVisual nodeWhole =
                     graph.Nodes.OrderBy(x => x.Order).FirstOrDefault(
-                        x => new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds()).Contains(e.Location));
+                        x => new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds()).Contains(worldLocation));
 
                 bool connectionRecreated = false;
 
                 if (nodeWhole != null)
                 {
-                    SocketVisual socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(e.Location));
+                    SocketVisual socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(worldLocation));
                     if (socket != null && IsConnectable(dragSocket, socket) && dragSocket.Input != socket.Input)
                     {
                         // Recreate the connection with new endpoint
@@ -576,12 +766,15 @@ namespace NodeEditor
             }
             else if (dragSocket != null)
             {
+                // Convert mouse location to world coordinates
+                PointF worldLocation = ScreenToWorld(e.Location);
+
                 NodeVisual nodeWhole =
                     graph.Nodes.OrderBy(x => x.Order).FirstOrDefault(
-                        x => new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds()).Contains(e.Location));
+                        x => new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds()).Contains(worldLocation));
                 if (nodeWhole != null)
                 {
-                    SocketVisual socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(e.Location));
+                    SocketVisual socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(worldLocation));
                     if (socket != null)
                     {
                         if (IsConnectable(dragSocket, socket) && dragSocket.Input != socket.Input)
@@ -924,7 +1117,8 @@ namespace NodeEditor
 
             if (Context == null) return;
 
-            if (e.Button == MouseButtons.Right)
+            // Only show context menu if we didn't drag
+            if (e.Button == MouseButtons.Right && !rightMouseMoved)
             {
                 var methods = Context.GetType().GetMethods();
                 var nodes =

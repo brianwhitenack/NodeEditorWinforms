@@ -14,6 +14,12 @@ namespace MathSample
     {
         public event Action OnExecutionFinished;
 
+        public enum UnitOfMeasure
+        {
+            EA,
+            SQFT,
+        }
+
         public NodeVisual CurrentProcessingNode { get; set; }
         public event Action<string, NodeVisual, FeedbackType, object, bool> FeedbackInfo;
 
@@ -29,6 +35,12 @@ namespace MathSample
         public void FinishExecution()
         {
             OnExecutionFinished?.Invoke();
+        }
+
+        [Node("Filter To Type", "Measurements", "Basic", "Filter measurements by type", false)]
+        public void FilterToType(List<Measurement> measurements, string type, out List<Measurement> filteredMeasurements)
+        {
+            filteredMeasurements = measurements.Where(m => m.Type.Equals(type, StringComparison.OrdinalIgnoreCase)).ToList();
         }
 
         [Node("Measurement List", "Measurements", "Basic", "Get the current measurement list", false)]
@@ -69,6 +81,24 @@ namespace MathSample
             length = measurement.Length;
         }
 
+        [Node("Measurement Length Sum", "Measurements", "Basic", "Get the length of the measurement", false)]
+        public void MeasurementLengthSum(List<Measurement> measurements, out double length)
+        {
+            length = measurements.Sum(m => m.Length);
+        }
+
+        [Node("Measurement Area", "Measurements", "Basic", "Get the area of the measurement", false)]
+        public void MeasurementArea(Measurement measurement, out double area)
+        {
+            area = measurement.Area;
+        }
+
+        [Node("Measurement Area Sum", "Measurements", "Basic", "Get the area of the measurement", false)]
+        public void MeasurementAreaSum(List<Measurement> measurements, out double area)
+        {
+            area = measurements.Sum(m => m.Area);
+        }
+
         [Node("If Else", "Flow Control", "Basic", "Standard If Else flow control", false, flowControlHandler: typeof(IfElseFlowControl))]
         public void IfElse(bool condition, ExecutionPath enter, out ExecutionPath ifTrue, out ExecutionPath ifFalse)
         {
@@ -83,7 +113,7 @@ namespace MathSample
         }
 
         [Node("Create Part", "Parts", "Basic", "Create a part")]
-        public void CreatePart(string sku, string description, string package, float quantity, string unitOfMeasure, out Part part)
+        public void CreatePart(string sku, string description, string package, double quantity, string unitOfMeasure, out Part part)
         {
             part = new Part
             {
@@ -99,6 +129,7 @@ namespace MathSample
         public void PartsList(ExecutionPath calculationEnd, List<Part> parts)
         {
             Parts = parts;
+            FinishExecution();
         }
 
         [Node("String Value", "Constants", "Basic", "Allows to output a simple string value.", false)]
@@ -129,7 +160,7 @@ namespace MathSample
             forEachResult = null;
         }
 
-        [Node("Pass Through", "Flow Control", "Functional", "Pass through a variable with control flow.", true)]
+        [Node("Pass Through Value", "Flow Control", "Functional", "Pass through a variable with control flow.", true)]
         [DynamicNode]
         public void PassThrough(
             [DynamicType(TypeGroup = "Input")] object input,
@@ -138,10 +169,29 @@ namespace MathSample
            output = input;
         }
 
-        [Node("Value", "Constants", "Basic", "Allows to output a simple value.", false)]
+        [Node("Number Value", "Constants", "Basic", "Allows to output a simple value.", false)]
         public void InputValue(double inValue, out double outValue)
         {
             outValue = inValue;
+        }
+
+        [Node("TXWXL", "Dimensions", "Basic", "Creates a TXWXL string", false)]
+        [DynamicNode]
+        public void ThicknessWidthLength(
+            [DynamicType(TypeGroup = "Thickness")] object thickness,
+            [DynamicType(TypeGroup = "Width")] object width,
+            [DynamicType(TypeGroup = "Length")] object length, out string dimension)
+        {
+            dimension = $"{thickness}X{width}X{length}";
+        }
+
+        [Node("Round", "Math", "Basic", "Rounds a number to the nearest integer.", false)]
+        public void Round(double value, bool toNearestEven, out double result)
+        {
+            result = Math.Ceiling(value);
+
+            if (result % 2 != 0)
+                result += 1;
         }
 
         [Node("Add", "Math", "Basic", "Adds two input values.", false)]
@@ -157,13 +207,13 @@ namespace MathSample
         }
 
         [Node("Multiply", "Math", "Basic", "Multiplies two input values.", false)]
-        public void Multiply(float a, double b, out double result)
+        public void Multiply(double a, double b, out double result)
         {
             result = a * b;
         }
 
         [Node("Divide", "Math", "Basic", "Divides two input values.", false)]
-        public void Divide(float a, double b, out double result)
+        public void Divide(double a, double b, out double result)
         {
             result = a / b;
         }
@@ -199,6 +249,12 @@ namespace MathSample
         public void Concatenate(string a, string b, out string result)
         {
             result = a + b;
+        }
+
+        [Node("Join", "Operators", "String", "Joins two strings with a separator.", false)]
+        public void Join(string separator, string a, string b, out string result)
+        {
+            result = string.Join(separator, a, b);
         }
 
         [Node("To String", "Operators", "String", "Converts to a string.", false)]

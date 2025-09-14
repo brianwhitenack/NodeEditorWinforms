@@ -33,8 +33,44 @@ namespace MathSample
                         { "BeamType", "Header" },
                         { "Material", "LVL" },
                         { "Grade", "#1" },
+                        { "Plies", "3" },
                         { "Thickness", 2 },
                         { "Width", 4 }
+                    }
+                },
+                new Measurement()
+                {
+                    Type = "Beam",
+                    Length = 14.5,
+                    Count = 2,
+                    Selections = new Dictionary<string, object>()
+                    {
+                        { "BeamType", "Header" },
+                        { "Material", "LVL" },
+                        { "Grade", "#1" },
+                        { "Plies", "1" },
+                        { "Thickness", 2 },
+                        { "Width", 4 }
+                    }
+                },
+                new Measurement()
+                {
+                    Type = "Siding",
+                    Area = 1200,
+                    Count = 2,
+                    Selections = new Dictionary<string, object>()
+                    {
+                        { "Selection", "Brick" },
+                    }
+                },
+                new Measurement()
+                {
+                    Type = "Siding",
+                    Area = 100,
+                    Count = 2,
+                    Selections = new Dictionary<string, object>()
+                    {
+                        { "Selection", "LP" },
                     }
                 }
             };
@@ -139,6 +175,20 @@ namespace MathSample
             
             // Add Parts List node by method name
             controlNodeEditor.nodesControl.AddNodeByMethodName("PartsList", 300, 50);
+        }
+
+        private void btnNew_Click(object sender, EventArgs e)
+        {
+            // Clear the current node graph
+            controlNodeEditor.nodesControl.Clear();
+
+            // Add default nodes for a new graph
+            AddDefaultNodes();
+        }
+
+        private void btnUpdateMeasurements_Click(object sender, EventArgs e)
+        {
+            context.Measurements = JsonConvert.DeserializeObject<List<Measurement>>(txtMeasurements.Text);
         }
     }
 }
