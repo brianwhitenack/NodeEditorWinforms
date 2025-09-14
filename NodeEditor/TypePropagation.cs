@@ -62,9 +62,14 @@ namespace NodeEditor
                     
                 if (connection != null)
                 {
-                    Type inferredType = GetActualType(connection);
+                    Type inferredType = ResolveTypeRecursively(connection, graph);
                     if (inferredType == null)
                         inferredType = connection.OutputSocket.Type;
+                    
+                    // For type propagation, use the actual source type, not the converted type
+                    // This preserves type information for ExtractElementType operations
+                    // For example, double[] should remain double[] for type propagation,
+                    // even though it converts to IEnumerable<object> at runtime
                     
                     // Store the inferred type for this parameter's group
                     if (!string.IsNullOrEmpty(param.Value.TypeGroup))
@@ -105,7 +110,7 @@ namespace NodeEditor
                         
                         if (sourceConnection != null)
                         {
-                            targetType = GetActualType(sourceConnection) ?? sourceConnection.OutputSocket.Type;
+                            targetType = ResolveTypeRecursively(sourceConnection, graph) ?? sourceConnection.OutputSocket.Type;
                             
                             if (param.Value.ExtractElementType)
                             {
@@ -229,6 +234,98 @@ namespace NodeEditor
         }
         
         /// <summary>
+        /// Recursively resolves the concrete type through chains of dynamic nodes
+        /// </summary>
+        private static Type ResolveTypeRecursively(NodeConnection connection, NodesGraph graph, HashSet<NodeVisual> visited = null)
+        {
+            if (connection == null || connection.OutputSocket == null) 
+                return null;
+                
+            // Prevent infinite recursion
+            if (visited == null)
+                visited = new HashSet<NodeVisual>();
+            if (visited.Contains(connection.OutputNode))
+                return connection.OutputSocket.Type;
+            visited.Add(connection.OutputNode);
+            
+            // If the output socket has a runtime type set, use it
+            Type runtimeType = connection.OutputNode.GetSocketRuntimeType(connection.OutputSocketName);
+            if (runtimeType != null && runtimeType != typeof(object))
+            {
+                return runtimeType;
+            }
+            
+            // If this is a dynamic node with generic output, trace back further
+            if (IsDynamicNode(connection.OutputNode) && IsGenericSocket(connection.OutputSocket))
+            {
+                // Find the input connections to this node
+                Dictionary<string, DynamicTypeAttribute> outputNodeDynamicParams = GetDynamicParameters(connection.OutputNode);
+                
+                // Look for the parameter that corresponds to this output
+                foreach (KeyValuePair<string, DynamicTypeAttribute> param in outputNodeDynamicParams)
+                {
+                    if (param.Key == connection.OutputSocketName)
+                    {
+                        // If this output derives from an input, trace that input
+                        if (!string.IsNullOrEmpty(param.Value.DerivedFrom))
+                        {
+                            NodeConnection upstreamConnection = graph.Connections.FirstOrDefault(
+                                c => c.InputNode == connection.OutputNode && c.InputSocketName == param.Value.DerivedFrom);
+                            
+                            if (upstreamConnection != null)
+                            {
+                                Type upstreamType = ResolveTypeRecursively(upstreamConnection, graph, visited);
+                                
+                                // Apply transformations if needed
+                                if (param.Value.ExtractElementType)
+                                {
+                                    upstreamType = GetElementType(upstreamType);
+                                }
+                                else if (param.Value.WrapInCollection)
+                                {
+                                    upstreamType = CreateTypedCollectionType(upstreamType, typeof(List<object>));
+                                }
+                                
+                                return upstreamType;
+                            }
+                        }
+                        // If it's part of a type group, find inputs with the same type group
+                        else if (!string.IsNullOrEmpty(param.Value.TypeGroup))
+                        {
+                            foreach (KeyValuePair<string, DynamicTypeAttribute> inputParam in outputNodeDynamicParams)
+                            {
+                                if (inputParam.Value.TypeGroup == param.Value.TypeGroup && inputParam.Key != param.Key)
+                                {
+                                    NodeConnection upstreamConnection = graph.Connections.FirstOrDefault(
+                                        c => c.InputNode == connection.OutputNode && c.InputSocketName == inputParam.Key);
+                                    
+                                    if (upstreamConnection != null)
+                                    {
+                                        Type upstreamType = ResolveTypeRecursively(upstreamConnection, graph, visited);
+                                        
+                                        // Apply transformations from the output parameter
+                                        if (param.Value.ExtractElementType)
+                                        {
+                                            upstreamType = GetElementType(upstreamType);
+                                        }
+                                        else if (param.Value.WrapInCollection)
+                                        {
+                                            upstreamType = CreateTypedCollectionType(upstreamType, typeof(List<object>));
+                                        }
+                                        
+                                        return upstreamType;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return connection.OutputSocket.Type;
+        }
+        
+        /// <summary>
         /// Gets the actual runtime type from a connection's source
         /// </summary>
         public static Type GetActualType(NodeConnection connection)
@@ -244,6 +341,13 @@ namespace NodeEditor
                 return value.GetType();
             }
             
+            // If the output socket has a runtime type set (from type propagation), use it
+            Type runtimeType = connection.OutputNode.GetSocketRuntimeType(connection.OutputSocketName);
+            if (runtimeType != null && runtimeType != typeof(object))
+            {
+                return runtimeType;
+            }
+            
             return connection.OutputSocket.Type;
         }
         
@@ -254,6 +358,11 @@ namespace NodeEditor
         {
             if (collectionType == null) return typeof(object);
             
+            if (collectionType.IsByRef)
+            {
+                collectionType = collectionType.GetElementType();
+            }
+
             // Handle arrays
             if (collectionType.IsArray)
             {
@@ -296,28 +405,156 @@ namespace NodeEditor
         {
             if (elementType == null) elementType = typeof(object);
             
-            // If template is an array
-            if (templateType.IsArray)
+            if (elementType.IsByRef)
             {
-                return elementType.MakeArrayType();
+                elementType = elementType.GetElementType();
+            }
+
+            // Always use List<T> for consistency
+            // This avoids array covariance issues and simplifies type handling
+            return typeof(List<>).MakeGenericType(elementType);
+        }
+        
+        /// <summary>
+        /// Converts a value to the expected type for method invocation or data flow
+        /// </summary>
+        public static object ConvertValue(object value, Type expectedType)
+        {
+            // If value is null, return null (or default for value types)
+            if (value == null)
+            {
+                return expectedType.IsValueType ? Activator.CreateInstance(expectedType) : null;
             }
             
-            // If template is a generic type
-            if (templateType.IsGenericType)
+            Type actualType = value.GetType();
+            
+            // If types already match, no conversion needed
+            if (expectedType.IsAssignableFrom(actualType))
             {
-                Type genericDef = templateType.GetGenericTypeDefinition();
+                return value;
+            }
+            
+            // Always convert arrays to Lists for consistency
+            if (actualType.IsArray && IsCollectionType(expectedType))
+            {
+                // Convert array to List
+                Type elementType = actualType.GetElementType();
+                Type listType = typeof(List<>).MakeGenericType(elementType);
+                System.Collections.IList list = (System.Collections.IList)Activator.CreateInstance(listType);
                 
-                if (genericDef == typeof(IEnumerable<>) || 
-                    genericDef == typeof(IList<>) || 
-                    genericDef == typeof(List<>) ||
-                    genericDef == typeof(ICollection<>))
+                foreach (object item in (Array)value)
                 {
-                    return genericDef.MakeGenericType(elementType);
+                    list.Add(item);
+                }
+                
+                // Now convert the List to the expected type if needed
+                return ConvertCollection(list, listType, expectedType);
+            }
+            
+            // Handle collection type conversions
+            if (IsCollectionType(expectedType) && IsCollectionType(actualType))
+            {
+                return ConvertCollection(value, actualType, expectedType);
+            }
+            
+            // Try standard type conversion
+            try
+            {
+                if (expectedType.IsEnum && value is string stringValue)
+                {
+                    return Enum.Parse(expectedType, stringValue);
+                }
+                
+                if (typeof(IConvertible).IsAssignableFrom(actualType) && typeof(IConvertible).IsAssignableFrom(expectedType))
+                {
+                    return Convert.ChangeType(value, expectedType);
+                }
+            }
+            catch
+            {
+                // Conversion failed, return original value and let caller handle it
+            }
+            
+            // If no conversion worked, return the original value
+            // The caller might still work with implicit conversions
+            return value;
+        }
+        
+        /// <summary>
+        /// Converts between collection types
+        /// </summary>
+        private static object ConvertCollection(object value, Type actualType, Type expectedType)
+        {
+            // Special handling for IEnumerable<T>
+            if (expectedType.IsGenericType && expectedType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
+                Type expectedElementType = expectedType.GetGenericArguments()[0];
+                
+                // If expecting IEnumerable<object>, we can return the original collection
+                // The framework will handle boxing during iteration
+                if (expectedElementType == typeof(object) && value is IEnumerable)
+                {
+                    // Return the original collection to preserve type information
+                    // Boxing will happen automatically during enumeration
+                    return value;
+                }
+                
+                // Try to convert to the expected IEnumerable type
+                if (value is IEnumerable enumerable)
+                {
+                    // Create a List<T> of the expected element type
+                    Type listType = typeof(List<>).MakeGenericType(expectedElementType);
+                    System.Collections.IList list = (System.Collections.IList)Activator.CreateInstance(listType);
+                    
+                    foreach (object item in enumerable)
+                    {
+                        // Recursively convert each item if needed
+                        object convertedItem = ConvertValue(item, expectedElementType);
+                        list.Add(convertedItem);
+                    }
+                    
+                    return list;
                 }
             }
             
-            // Default to List<T>
-            return typeof(List<>).MakeGenericType(elementType);
+            // Convert arrays to Lists to maintain consistency
+            // Even if expectedType is an array, we return a List
+            if (expectedType.IsArray && value is IEnumerable)
+            {
+                Type elementType = expectedType.GetElementType();
+                Type listType = typeof(List<>).MakeGenericType(elementType);
+                System.Collections.IList list = (System.Collections.IList)Activator.CreateInstance(listType);
+                
+                foreach (object item in (IEnumerable)value)
+                {
+                    list.Add(ConvertValue(item, elementType));
+                }
+                
+                // Return List instead of array - maintain List purity!
+                return list;
+            }
+            
+            // Handle List<T> conversions
+            if (expectedType.IsGenericType && expectedType.GetGenericTypeDefinition() == typeof(List<>))
+            {
+                Type expectedElementType = expectedType.GetGenericArguments()[0];
+                Type listType = typeof(List<>).MakeGenericType(expectedElementType);
+                System.Collections.IList list = (System.Collections.IList)Activator.CreateInstance(listType);
+                
+                if (value is IEnumerable enumerable)
+                {
+                    foreach (object item in enumerable)
+                    {
+                        object convertedItem = ConvertValue(item, expectedElementType);
+                        list.Add(convertedItem);
+                    }
+                }
+                
+                return list;
+            }
+            
+            // If we can't convert, return the original value
+            return value;
         }
         
         /// <summary>
@@ -344,26 +581,54 @@ namespace NodeEditor
                 Type targetElement = GetElementType(targetType);
                 
                 // Allow connection if element types are compatible
-                return targetElement == typeof(object) || 
-                       targetElement.IsAssignableFrom(sourceElement);
+                // This includes object accepting any type (including value types that can be boxed)
+                if (targetElement == typeof(object))
+                {
+                    return true; // Any type can be boxed to object
+                }
+                
+                // Check standard type compatibility
+                return targetElement.IsAssignableFrom(sourceElement) ||
+                       sourceElement.IsSubclassOf(targetElement) ||
+                       (targetElement.IsInterface && targetElement.IsAssignableFrom(sourceElement));
+            }
+            
+            // Also allow connecting a collection to IEnumerable or IEnumerable<T>
+            if (IsCollectionType(sourceType) && 
+                (targetType == typeof(IEnumerable) || 
+                 (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(IEnumerable<>))))
+            {
+                if (targetType == typeof(IEnumerable))
+                    return true;
+                    
+                Type sourceElement = GetElementType(sourceType);
+                Type targetElement = targetType.GetGenericArguments()[0];
+                
+                // Allow any type to be converted to object (including value types via boxing)
+                if (targetElement == typeof(object))
+                    return true;
+                    
+                return targetElement.IsAssignableFrom(sourceElement);
             }
             
             return false;
         }
         
-        private static bool IsCollectionType(Type type)
+        public static bool IsCollectionType(Type type)
         {
-            if (type.IsArray) return true;
-            if (type == typeof(IEnumerable)) return true;
-            
+            // Simplified - we primarily care about Lists now
             if (type.IsGenericType)
             {
                 Type genericDef = type.GetGenericTypeDefinition();
-                return genericDef == typeof(IEnumerable<>) ||
+                return genericDef == typeof(List<>) ||
                        genericDef == typeof(IList<>) ||
-                       genericDef == typeof(List<>) ||
+                       genericDef == typeof(IEnumerable<>) ||
                        genericDef == typeof(ICollection<>);
             }
+            
+            // Still support arrays for backward compatibility
+            if (type.IsArray) return true;
+            if (type == typeof(IEnumerable)) return true;
             
             return typeof(IEnumerable).IsAssignableFrom(type);
         }

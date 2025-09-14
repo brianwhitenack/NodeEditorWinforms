@@ -54,6 +54,8 @@ namespace NodeEditor
         private NodeVisual dragSocketNode;
         private PointF dragConnectionBegin;
         private PointF dragConnectionEnd;
+        private NodeConnection dragConnection;
+        private bool isDraggingConnection;
         private Stack<NodeVisual> executionStack = new Stack<NodeVisual>();
         private bool rebuildConnectionDictionary = true;
         private Dictionary<string, NodeConnection> connectionDictionary = new Dictionary<string, NodeConnection>();
@@ -167,13 +169,13 @@ namespace NodeEditor
 
             if (dragSocket != null)
             {
-                var pen = new Pen(Color.Black, 2);
+                Pen pen = new Pen(Color.Black, 2);
                 NodesGraph.DrawConnection(e.Graphics, pen, dragConnectionBegin, dragConnectionEnd);
             }
 
             if (selectionStart != PointF.Empty)
             {
-                var rect = Rectangle.Round(MakeRect(selectionStart, selectionEnd));
+                Rectangle rect = Rectangle.Round(MakeRect(selectionStart, selectionEnd));
                 e.Graphics.FillRectangle(new SolidBrush(Color.FromArgb(50, Color.CornflowerBlue)), rect);
                 e.Graphics.DrawRectangle(new Pen(Color.DodgerBlue), rect);
             }
@@ -183,64 +185,250 @@ namespace NodeEditor
 
         private static RectangleF MakeRect(PointF a, PointF b)
         {
-            var x1 = a.X;
-            var x2 = b.X;
-            var y1 = a.Y;
-            var y2 = b.Y;
+            float x1 = a.X;
+            float x2 = b.X;
+            float y1 = a.Y;
+            float y2 = b.Y;
             return new RectangleF(Math.Min(x1, x2), Math.Min(y1, y2), Math.Abs(x2 - x1), Math.Abs(y2 - y1));
         }
 
         private void NodesControl_MouseMove(object sender, MouseEventArgs e)
         {
-            var em = PointToScreen(e.Location);
+            Point em = PointToScreen(e.Location);
             if (selectionStart != PointF.Empty)
             {
                 selectionEnd = e.Location;
             }
             if (mdown)
             {
-                foreach (var node in graph.Nodes.Where(x => x.IsSelected))
+                if (!isDraggingConnection && dragSocket == null)
                 {
-                    node.X += em.X - lastmpos.X;
-                    node.Y += em.Y - lastmpos.Y;
-                    node.DiscardCache();
-                    node.LayoutEditor();
-                }
-                if (graph.Nodes.Exists(x => x.IsSelected))
-                {
-                    var n = graph.Nodes.FirstOrDefault(x => x.IsSelected);
-                    var bound = new RectangleF(new PointF(n.X, n.Y), n.GetNodeBounds());
-                    foreach (var node in graph.Nodes.Where(x => x.IsSelected))
+                    // Regular node dragging - only when not dragging sockets or connections
+                    foreach (NodeVisual node in graph.Nodes.Where(x => x.IsSelected))
                     {
-                        bound = RectangleF.Union(bound, new RectangleF(new PointF(node.X, node.Y), node.GetNodeBounds()));
+                        node.X += em.X - lastmpos.X;
+                        node.Y += em.Y - lastmpos.Y;
+                        node.DiscardCache();
+                        node.LayoutEditor();
                     }
-                    OnShowLocation(bound);
+                    if (graph.Nodes.Exists(x => x.IsSelected))
+                    {
+                        NodeVisual n = graph.Nodes.FirstOrDefault(x => x.IsSelected);
+                        RectangleF bound = new RectangleF(new PointF(n.X, n.Y), n.GetNodeBounds());
+                        foreach (NodeVisual node in graph.Nodes.Where(x => x.IsSelected))
+                        {
+                            bound = RectangleF.Union(bound, new RectangleF(new PointF(node.X, node.Y), node.GetNodeBounds()));
+                        }
+                        OnShowLocation(bound);
+                    }
+
                 }
-                Invalidate();
 
                 if (dragSocket != null)
                 {
-                    var center = new PointF(dragSocket.X + dragSocket.Width / 2f, dragSocket.Y + dragSocket.Height / 2f);
-                    if (dragSocket.Input)
+                    if (isDraggingConnection)
                     {
-                        dragConnectionBegin.X += em.X - lastmpos.X;
-                        dragConnectionBegin.Y += em.Y - lastmpos.Y;
-                        dragConnectionEnd = center;
-                        OnShowLocation(new RectangleF(dragConnectionBegin, new SizeF(10, 10)));
+                        // Connection dragging: floating end follows mouse, fixed end stays at socket
+                        PointF mousePos = PointToClient(em);
+
+                        // Get the fixed socket center (the one we're NOT dragging from)
+                        PointF fixedSocketCenter = new PointF(dragSocket.X + dragSocket.Width / 2f, dragSocket.Y + dragSocket.Height / 2f);
+
+                        if (dragSocket.Input)
+                        {
+                            // Dragging towards a new input, keep current input socket fixed
+                            dragConnectionBegin = mousePos; // Floating end follows mouse
+                            dragConnectionEnd = fixedSocketCenter; // Fixed end stays at input socket
+                            OnShowLocation(new RectangleF(dragConnectionBegin, new SizeF(10, 10)));
+                        }
+                        else
+                        {
+                            // Dragging towards a new output, keep current output socket fixed
+                            dragConnectionBegin = fixedSocketCenter; // Fixed end stays at output socket
+                            dragConnectionEnd = mousePos; // Floating end follows mouse
+                            OnShowLocation(new RectangleF(dragConnectionEnd, new SizeF(10, 10)));
+                        }
                     }
                     else
                     {
-                        dragConnectionBegin = center;
-                        dragConnectionEnd.X += em.X - lastmpos.X;
-                        dragConnectionEnd.Y += em.Y - lastmpos.Y;
-                        OnShowLocation(new RectangleF(dragConnectionEnd, new SizeF(10, 10)));
+                        // Regular socket dragging: existing logic
+                        PointF center = new PointF(dragSocket.X + dragSocket.Width / 2f, dragSocket.Y + dragSocket.Height / 2f);
+                        if (dragSocket.Input)
+                        {
+                            dragConnectionBegin.X += em.X - lastmpos.X;
+                            dragConnectionBegin.Y += em.Y - lastmpos.Y;
+                            dragConnectionEnd = center;
+                            OnShowLocation(new RectangleF(dragConnectionBegin, new SizeF(10, 10)));
+                        }
+                        else
+                        {
+                            dragConnectionBegin = center;
+                            dragConnectionEnd.X += em.X - lastmpos.X;
+                            dragConnectionEnd.Y += em.Y - lastmpos.Y;
+                            OnShowLocation(new RectangleF(dragConnectionEnd, new SizeF(10, 10)));
+                        }
                     }
-
                 }
                 lastmpos = em;
             }
-
             needRepaint = true;
+        }
+
+        /// <summary>
+        /// Handles mouse down on connections for dragging/reconnecting
+        /// </summary>
+        /// <param name="location">Mouse location</param>
+        /// <returns>True if connection dragging was initiated</returns>
+        private bool TryStartConnectionDrag(Point location)
+        {
+            NodeConnection hitConnection = graph.GetConnectionAtPoint(new PointF(location.X, location.Y));
+            if (hitConnection == null || mdown) return false;
+
+            // Start dragging the connection
+            isDraggingConnection = true;
+            dragConnection = hitConnection;
+
+            // Remove the connection temporarily while dragging
+            graph.Connections.Remove(hitConnection);
+            rebuildConnectionDictionary = true;
+            Invalidate(); // Force immediate repaint to hide the original connection
+
+            // Determine which end to drag based on mouse position
+            SocketVisual outputSocket = hitConnection.OutputNode.GetSockets().FirstOrDefault(x => x.Name == hitConnection.OutputSocketName);
+            SocketVisual inputSocket = hitConnection.InputNode.GetSockets().FirstOrDefault(x => x.Name == hitConnection.InputSocketName);
+
+            if (outputSocket != null && inputSocket != null)
+            {
+                RectangleF outputBounds = outputSocket.GetBounds();
+                RectangleF inputBounds = inputSocket.GetBounds();
+                PointF outputCenter = outputBounds.Location + new SizeF(outputBounds.Width / 2f, outputBounds.Height / 2f);
+                PointF inputCenter = inputBounds.Location + new SizeF(inputBounds.Width / 2f, inputBounds.Height / 2f);
+
+                // Calculate distance to both ends
+                float distToOutput = (float)Math.Sqrt(Math.Pow(location.X - outputCenter.X, 2) + Math.Pow(location.Y - outputCenter.Y, 2));
+                float distToInput = (float)Math.Sqrt(Math.Pow(location.X - inputCenter.X, 2) + Math.Pow(location.Y - inputCenter.Y, 2));
+
+                // Drag from the closer end - disconnect that end and keep the farther end fixed
+                if (distToOutput < distToInput)
+                {
+                    // Closer to output - disconnect from output, keep input fixed, drag towards new output
+                    dragSocket = inputSocket;
+                    dragSocketNode = hitConnection.InputNode;
+                    dragConnectionBegin = new PointF(location.X, location.Y); // Floating end starts at mouse
+                    dragConnectionEnd = inputCenter; // Fixed end stays at input socket
+                }
+                else
+                {
+                    // Closer to input - disconnect from input, keep output fixed, drag towards new input  
+                    dragSocket = outputSocket;
+                    dragSocketNode = hitConnection.OutputNode;
+                    dragConnectionBegin = outputCenter; // Fixed end stays at output socket
+                    dragConnectionEnd = new PointF(location.X, location.Y); // Floating end starts at mouse
+                }
+            }
+
+            mdown = true;
+            lastmpos = PointToScreen(location);
+
+            // Handle type propagation after disconnection - use unified propagation
+            PropagateTypesForConnection(hitConnection);
+
+            return true;
+        }
+
+        /// <summary>
+        /// Handles mouse down on node headers for selection and dragging
+        /// </summary>
+        /// <param name="location">Mouse location</param>
+        /// <returns>The selected node if header was clicked, null otherwise</returns>
+        private NodeVisual TrySelectNodeHeader(Point location)
+        {
+            NodeVisual node = graph.Nodes.OrderBy(x => x.Order).FirstOrDefault(
+                x => new RectangleF(new PointF(x.X, x.Y), x.GetHeaderSize()).Contains(location));
+
+            if (node != null && !mdown)
+            {
+                node.IsSelected = true;
+                node.Order = graph.Nodes.Min(x => x.Order) - 1;
+                if (node.CustomEditor != null)
+                {
+                    node.CustomEditor.BringToFront();
+                }
+                mdown = true;
+                lastmpos = PointToScreen(location);
+                Refresh();
+            }
+
+            return node;
+        }
+
+        /// <summary>
+        /// Handles mouse down on sockets for connection creation/modification
+        /// </summary>
+        /// <param name="location">Mouse location</param>
+        /// <param name="targetNode">The node that was already selected (if any)</param>
+        /// <returns>The node if socket interaction occurred, null otherwise</returns>
+        private NodeVisual TryHandleSocketInteraction(Point location, NodeVisual targetNode)
+        {
+            if (targetNode != null || mdown) return targetNode;
+
+            NodeVisual nodeWhole = graph.Nodes.OrderBy(x => x.Order).FirstOrDefault(
+                x => new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds()).Contains(location));
+
+            if (nodeWhole == null) return null;
+
+            targetNode = nodeWhole;
+            SocketVisual socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(location));
+
+            if (socket == null) return targetNode;
+
+            if ((ModifierKeys & Keys.Control) == Keys.Control)
+            {
+                // Ctrl+Click: Disconnect existing connection and start dragging from the other end
+                NodeConnection connection = graph.Connections.FirstOrDefault(
+                    x => x.InputNode == nodeWhole && x.InputSocketName == socket.Name);
+
+                if (connection != null)
+                {
+                    dragSocket = connection.OutputNode.GetSockets()
+                        .FirstOrDefault(x => x.Name == connection.OutputSocketName);
+                    dragSocketNode = connection.OutputNode;
+                }
+                else
+                {
+                    connection = graph.Connections.FirstOrDefault(
+                        x => x.OutputNode == nodeWhole && x.OutputSocketName == socket.Name);
+
+                    if (connection != null)
+                    {
+                        dragSocket = connection.InputNode.GetSockets()
+                            .FirstOrDefault(x => x.Name == connection.InputSocketName);
+                        dragSocketNode = connection.InputNode;
+                    }
+                }
+
+                graph.Connections.Remove(connection);
+                rebuildConnectionDictionary = true;
+
+                // Handle type propagation after disconnection - use unified propagation
+                if (connection != null)
+                {
+                    PropagateTypesForConnection(connection);
+                }
+            }
+            else
+            {
+                // Normal click: Start dragging from this socket
+                dragSocket = socket;
+                dragSocketNode = nodeWhole;
+            }
+
+            dragConnectionBegin = new PointF(location.X, location.Y);
+            dragConnectionEnd = new PointF(location.X, location.Y);
+            mdown = true;
+            lastmpos = PointToScreen(location);
+
+            return targetNode;
         }
 
         private void NodesControl_MouseDown(object sender, MouseEventArgs e)
@@ -248,7 +436,6 @@ namespace NodeEditor
             if (e.Button == MouseButtons.Left)
             {
                 selectionStart = PointF.Empty;
-
                 Focus();
 
                 if ((ModifierKeys & Keys.Shift) != Keys.Shift)
@@ -256,93 +443,29 @@ namespace NodeEditor
                     graph.Nodes.ForEach(x => x.IsSelected = false);
                 }
 
-                var node =
-                    graph.Nodes.OrderBy(x => x.Order).FirstOrDefault(
-                        x => new RectangleF(new PointF(x.X, x.Y), x.GetHeaderSize()).Contains(e.Location));
+                // Try each type of interaction in order of priority - sockets first, then connections
+                NodeVisual selectedNode = TrySelectNodeHeader(e.Location);
 
-                if (node != null && !mdown)
+                if (selectedNode == null)
                 {
-
-                    node.IsSelected = true;
-
-                    node.Order = graph.Nodes.Min(x => x.Order) - 1;
-                    if (node.CustomEditor != null)
-                    {
-                        node.CustomEditor.BringToFront();
-                    }
-                    mdown = true;
-                    lastmpos = PointToScreen(e.Location);
-
-                    Refresh();
+                    selectedNode = TryHandleSocketInteraction(e.Location, selectedNode);
                 }
-                if (node == null && !mdown)
+
+                // Only try connection dragging if no socket interaction occurred
+                if (selectedNode == null && !mdown && TryStartConnectionDrag(e.Location))
                 {
-                    var nodeWhole =
-                    graph.Nodes.OrderBy(x => x.Order).FirstOrDefault(
-                        x => new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds()).Contains(e.Location));
-                    if (nodeWhole != null)
-                    {
-                        node = nodeWhole;
-                        var socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(e.Location));
-                        if (socket != null)
-                        {
-                            if ((ModifierKeys & Keys.Control) == Keys.Control)
-                            {
-                                NodeConnection connection =
-                                    graph.Connections.FirstOrDefault(
-                                        x => x.InputNode == nodeWhole && x.InputSocketName == socket.Name);
-
-                                if (connection != null)
-                                {
-                                    dragSocket =
-                                        connection.OutputNode.GetSockets()
-                                            .FirstOrDefault(x => x.Name == connection.OutputSocketName);
-                                    dragSocketNode = connection.OutputNode;
-                                }
-                                else
-                                {
-                                    connection =
-                                        graph.Connections.FirstOrDefault(
-                                            x => x.OutputNode == nodeWhole && x.OutputSocketName == socket.Name);
-
-                                    if (connection != null)
-                                    {
-                                        dragSocket =
-                                            connection.InputNode.GetSockets()
-                                                .FirstOrDefault(x => x.Name == connection.InputSocketName);
-                                        dragSocketNode = connection.InputNode;
-                                    }
-                                }
-
-                                graph.Connections.Remove(connection);
-                                rebuildConnectionDictionary = true;
-
-                                // Handle type propagation after disconnection
-                                if (connection != null && connection.InputNode.HasDynamicTypeSupport())
-                                {
-                                    connection.InputNode.PropagateTypes(graph);
-                                    PropagateTypesDownstream(connection.InputNode);
-                                }
-                            }
-                            else
-                            {
-                                dragSocket = socket;
-                                dragSocketNode = nodeWhole;
-                            }
-                            dragConnectionBegin = e.Location;
-                            dragConnectionEnd = e.Location;
-                            mdown = true;
-                            lastmpos = PointToScreen(e.Location);
-                        }
-                    }
-                    else
-                    {
-                        selectionStart = selectionEnd = e.Location;
-                    }
+                    return; // Connection dragging started
                 }
-                if (node != null)
+
+                if (selectedNode == null && !mdown)
                 {
-                    OnNodeContextSelected(node.GetNodeContext());
+                    // Start selection rectangle
+                    selectionStart = selectionEnd = e.Location;
+                }
+
+                if (selectedNode != null)
+                {
+                    OnNodeContextSelected(selectedNode.GetNodeContext());
                 }
             }
 
@@ -363,20 +486,9 @@ namespace NodeEditor
 
             if (outputType == null || inputType == null) return false;
 
-            // Check for exact match
-            if (outputType == inputType) return true;
-
-            // Check for inheritance
-            if (outputType.IsSubclassOf(inputType)) return true;
-
-            // Check for interface implementation
-            if (inputType.IsInterface && inputType.IsAssignableFrom(outputType)) return true;
-
-            // Special case: Check if output type can be assigned to input type
-            // This handles cases like string[] to IEnumerable<string>
-            if (inputType.IsAssignableFrom(outputType)) return true;
-
-            return false;
+            // Use TypePropagation's more sophisticated type compatibility check
+            // which handles generic collections properly
+            return TypePropagation.AreTypesCompatible(outputType, inputType);
         }
 
         private Type TypeResolver(Assembly assembly, string name, bool inh)
@@ -401,20 +513,75 @@ namespace NodeEditor
         {
             if (selectionStart != PointF.Empty)
             {
-                var rect = MakeRect(selectionStart, selectionEnd);
+                RectangleF rect = MakeRect(selectionStart, selectionEnd);
                 graph.Nodes.ForEach(
                     x => x.IsSelected = rect.Contains(new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds())));
                 selectionStart = PointF.Empty;
             }
 
-            if (dragSocket != null)
+            // Handle connection dragging
+            if (isDraggingConnection && dragSocket != null && dragConnection != null)
             {
-                var nodeWhole =
+                NodeVisual nodeWhole =
+                    graph.Nodes.OrderBy(x => x.Order).FirstOrDefault(
+                        x => new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds()).Contains(e.Location));
+
+                bool connectionRecreated = false;
+
+                if (nodeWhole != null)
+                {
+                    SocketVisual socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(e.Location));
+                    if (socket != null && IsConnectable(dragSocket, socket) && dragSocket.Input != socket.Input)
+                    {
+                        // Recreate the connection with new endpoint
+                        NodeConnection nc = new NodeConnection();
+                        if (!dragSocket.Input)
+                        {
+                            nc.OutputNode = dragSocketNode;
+                            nc.OutputSocketName = dragSocket.Name;
+                            nc.InputNode = nodeWhole;
+                            nc.InputSocketName = socket.Name;
+                        }
+                        else
+                        {
+                            nc.InputNode = dragSocketNode;
+                            nc.InputSocketName = dragSocket.Name;
+                            nc.OutputNode = nodeWhole;
+                            nc.OutputSocketName = socket.Name;
+                        }
+
+                        graph.Connections.RemoveAll(
+                            x => x.InputNode == nc.InputNode && x.InputSocketName == nc.InputSocketName);
+
+                        graph.Connections.Add(nc);
+                        rebuildConnectionDictionary = true;
+                        connectionRecreated = true;
+
+                        // Propagate types for dynamic nodes
+                        PropagateTypesForConnection(nc);
+                    }
+                }
+
+                // If connection wasn't recreated, it's deleted (user dropped it in empty space)
+                if (!connectionRecreated)
+                {
+                    // Connection is already removed from graph, just need to handle type propagation
+                    // Handle type propagation for nodes that were connected to the deleted connection - use unified propagation
+                    PropagateTypesForConnection(dragConnection);
+                }
+
+                // Reset connection dragging state
+                isDraggingConnection = false;
+                dragConnection = null;
+            }
+            else if (dragSocket != null)
+            {
+                NodeVisual nodeWhole =
                     graph.Nodes.OrderBy(x => x.Order).FirstOrDefault(
                         x => new RectangleF(new PointF(x.X, x.Y), x.GetNodeBounds()).Contains(e.Location));
                 if (nodeWhole != null)
                 {
-                    var socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(e.Location));
+                    SocketVisual socket = nodeWhole.GetSockets().FirstOrDefault(x => x.GetBounds().Contains(e.Location));
                     if (socket != null)
                     {
                         if (IsConnectable(dragSocket, socket) && dragSocket.Input != socket.Input)
@@ -456,6 +623,10 @@ namespace NodeEditor
         /// <summary>
         /// Propagates types through the graph when a connection is made or removed
         /// </summary>
+        /// <summary>
+        /// Unified type propagation for a connection - handles both initial and cascading propagation
+        /// This is the single entry point for all type propagation to ensure consistency
+        /// </summary>
         private void PropagateTypesForConnection(NodeConnection connection)
         {
             if (connection == null) return;
@@ -473,8 +644,45 @@ namespace NodeEditor
                 }
             }
 
-            // Propagate types through all downstream nodes
+            // Always propagate downstream to ensure complete type flow
             PropagateTypesDownstream(connection.InputNode);
+        }
+
+        /// <summary>
+        /// Propagates types for all connections in the graph using topological ordering
+        /// This ensures types flow from source nodes to sink nodes, preventing premature incompatibility detection
+        /// </summary>
+        private void PropagateAllConnectionTypes()
+        {
+            // Process in topological order to ensure types flow from sources to sinks
+            HashSet<NodeVisual> processedNodes = new HashSet<NodeVisual>();
+            List<NodeConnection> connectionsToProcess = graph.Connections.ToList();
+
+            // First pass: Process connections from nodes with no inputs (source nodes)
+            // This ensures concrete types are established before dynamic nodes
+            List<NodeVisual> sourceNodes = graph.Nodes.Where(n =>
+                !graph.Connections.Any(c => c.InputNode == n)).ToList();
+
+            foreach (NodeVisual sourceNode in sourceNodes)
+            {
+                List<NodeConnection> sourceConnections = connectionsToProcess
+                    .Where(c => c.OutputNode == sourceNode).ToList();
+                foreach (NodeConnection connection in sourceConnections)
+                {
+                    PropagateTypesForConnection(connection);
+                    processedNodes.Add(connection.InputNode);
+                }
+            }
+
+            // Second pass: Process remaining connections
+            // These are connections in the middle of the graph
+            foreach (NodeConnection connection in connectionsToProcess)
+            {
+                if (!processedNodes.Contains(connection.InputNode))
+                {
+                    PropagateTypesForConnection(connection);
+                }
+            }
         }
 
         /// <summary>
@@ -485,6 +693,7 @@ namespace NodeEditor
             HashSet<NodeVisual> visited = new HashSet<NodeVisual>();
             Queue<NodeVisual> toProcess = new Queue<NodeVisual>();
             toProcess.Enqueue(startNode);
+            bool needsInvalidate = false;
 
             while (toProcess.Count > 0)
             {
@@ -502,6 +711,7 @@ namespace NodeEditor
                     if (conn.InputNode.HasDynamicTypeSupport())
                     {
                         conn.InputNode.PropagateTypes(graph);
+                        needsInvalidate = true;
 
                         // Check for incompatible connections
                         DynamicNodeAttribute nodeAttr = conn.InputNode.Type?.GetCustomAttribute<DynamicNodeAttribute>();
@@ -516,6 +726,12 @@ namespace NodeEditor
                         toProcess.Enqueue(conn.InputNode);
                     }
                 }
+            }
+
+            // Trigger a visual refresh if any types were updated
+            if (needsInvalidate)
+            {
+                Invalidate();
             }
         }
 
@@ -586,32 +802,28 @@ namespace NodeEditor
                 graph.Connections.Remove(conn);
                 rebuildConnectionDictionary = true;
 
-                // Reset types for disconnected input node if it's dynamic
-                if (conn.InputNode.HasDynamicTypeSupport())
-                {
-                    conn.InputNode.PropagateTypes(graph);
-                    PropagateTypesDownstream(conn.InputNode);
-                }
+                // Reset types for disconnected input node if it's dynamic - use unified propagation
+                PropagateTypesForConnection(conn);
             }
         }
-        
+
         /// <summary>
         /// Disconnects connections that are no longer type-compatible (overload that returns removed connections)
         /// </summary>
         private void DisconnectIncompatibleConnections(NodeVisual node, List<NodeConnection> connectionsRemoved)
         {
             List<NodeConnection> connectionsToRemove = new List<NodeConnection>();
-            
+
             // Check input connections
             List<NodeConnection> inputConnections = graph.Connections
                 .Where(c => c.InputNode == node)
                 .ToList();
-                
+
             foreach (NodeConnection conn in inputConnections)
             {
                 Type expectedType = node.GetSocketRuntimeType(conn.InputSocketName);
                 Type actualType = conn.OutputNode.GetSocketRuntimeType(conn.OutputSocketName);
-                
+
                 if (expectedType != null && actualType != null)
                 {
                     if (!TypePropagation.AreTypesCompatible(actualType, expectedType))
@@ -620,7 +832,7 @@ namespace NodeEditor
                     }
                 }
             }
-            
+
             // Check output connections
             List<NodeConnection> outputConnections = graph.Connections
                 .Where(c => c.OutputNode == node)
@@ -663,11 +875,8 @@ namespace NodeEditor
                 rebuildConnectionDictionary = true;
                 connectionsRemoved.Add(conn);
 
-                // Reset types for disconnected input node if it's dynamic
-                if (conn.InputNode.HasDynamicTypeSupport())
-                {
-                    conn.InputNode.PropagateTypes(graph);
-                }
+                // Reset types for disconnected input node if it's dynamic - use unified propagation
+                PropagateTypesForConnection(conn);
             }
         }
 
@@ -868,17 +1077,17 @@ namespace NodeEditor
             {
                 // Collect all nodes that will be affected by the deletion BEFORE removing connections
                 HashSet<NodeVisual> affectedNodes = new HashSet<NodeVisual>();
-                
+
                 foreach (NodeVisual selectedNode in graph.Nodes.Where(x => x.IsSelected))
                 {
                     // Find all downstream nodes from this node before we delete connections
                     CollectDownstreamNodes(selectedNode, affectedNodes);
-                    
+
                     // Also collect nodes that have this node as input
                     List<NodeConnection> incomingConnections = graph.Connections
                         .Where(x => x.OutputNode == selectedNode)
                         .ToList();
-                    
+
                     foreach (NodeConnection conn in incomingConnections)
                     {
                         if (conn.InputNode.HasDynamicTypeSupport() && !graph.Nodes.Any(n => n.IsSelected && n == conn.InputNode))
@@ -887,22 +1096,22 @@ namespace NodeEditor
                         }
                     }
                 }
-                
+
                 // Now remove the selected nodes and their connections
                 foreach (NodeVisual selectedNode in graph.Nodes.Where(x => x.IsSelected))
                 {
                     Controls.Remove(selectedNode.CustomEditor);
                     graph.Connections.RemoveAll(x => x.OutputNode == selectedNode || x.InputNode == selectedNode);
                 }
-                
+
                 graph.Nodes.RemoveAll(x => graph.Nodes.Where(n => n.IsSelected).Contains(x));
                 rebuildConnectionDictionary = true;
-                
+
                 // After deletion, update types for all affected nodes
                 // We need to do this in multiple passes because disconnecting connections might affect more nodes
                 HashSet<NodeVisual> processedNodes = new HashSet<NodeVisual>();
                 Queue<NodeVisual> nodesToProcess = new Queue<NodeVisual>();
-                
+
                 // Initial set of affected nodes
                 foreach (NodeVisual affectedNode in affectedNodes)
                 {
@@ -911,30 +1120,30 @@ namespace NodeEditor
                         nodesToProcess.Enqueue(affectedNode);
                     }
                 }
-                
+
                 while (nodesToProcess.Count > 0)
                 {
                     NodeVisual currentNode = nodesToProcess.Dequeue();
                     if (processedNodes.Contains(currentNode) || !graph.Nodes.Contains(currentNode))
                         continue;
-                        
+
                     processedNodes.Add(currentNode);
-                    
+
                     // Store connections before type propagation to see what changes
                     List<NodeConnection> connectionsBefore = graph.Connections
                         .Where(c => c.OutputNode == currentNode)
                         .ToList();
-                    
+
                     // Propagate types
                     currentNode.PropagateTypes(graph);
-                    
+
                     // Check for incompatible connections after type reset
                     DynamicNodeAttribute nodeAttr = currentNode.Type?.GetCustomAttribute<DynamicNodeAttribute>();
                     if (nodeAttr != null && nodeAttr.AutoDisconnectIncompatible)
                     {
                         List<NodeConnection> connectionsRemoved = new List<NodeConnection>();
                         DisconnectIncompatibleConnections(currentNode, connectionsRemoved);
-                        
+
                         // If connections were removed, add affected downstream nodes to processing queue
                         foreach (NodeConnection removedConn in connectionsRemoved)
                         {
@@ -944,12 +1153,12 @@ namespace NodeEditor
                             }
                         }
                     }
-                    
+
                     // Add directly connected downstream nodes
                     List<NodeConnection> outputConnections = graph.Connections
                         .Where(c => c.OutputNode == currentNode)
                         .ToList();
-                        
+
                     foreach (NodeConnection conn in outputConnections)
                     {
                         if (!processedNodes.Contains(conn.InputNode))
@@ -961,7 +1170,7 @@ namespace NodeEditor
             }
             Invalidate();
         }
-        
+
         /// <summary>
         /// Collects all nodes downstream from the given node
         /// </summary>
@@ -970,7 +1179,7 @@ namespace NodeEditor
             List<NodeConnection> outgoingConnections = graph.Connections
                 .Where(c => c.OutputNode == startNode)
                 .ToList();
-                
+
             foreach (NodeConnection conn in outgoingConnections)
             {
                 if (!collected.Contains(conn.InputNode) && !graph.Nodes.Any(n => n.IsSelected && n == conn.InputNode))
@@ -1122,6 +1331,70 @@ namespace NodeEditor
         {
             var nodes = graph.Nodes.Where(x => nodeNames.Contains(x.Name));
             return nodes.ToList();
+        }
+
+        /// <summary>
+        /// Adds a node to the graph by method name at the specified coordinates
+        /// </summary>
+        /// <param name="methodName">Name of the method decorated with NodeAttribute</param>
+        /// <param name="x">X coordinate for the node</param>
+        /// <param name="y">Y coordinate for the node</param>
+        /// <returns>True if the node was successfully added, false otherwise</returns>
+        public bool AddNodeByMethodName(string methodName, float x, float y)
+        {
+            if (Context == null) return false;
+
+            var methods = Context.GetType().GetMethods();
+            var nodeToken = methods.Select(m => new NodeToken()
+            {
+                Method = m,
+                Attribute = m.GetCustomAttributes(typeof(NodeAttribute), false)
+                    .Cast<NodeAttribute>()
+                    .FirstOrDefault()
+            }).FirstOrDefault(n => n.Attribute != null && n.Method.Name == methodName);
+
+            if (nodeToken != null)
+            {
+                var originalMouseLocation = lastMouseLocation;
+                lastMouseLocation = new Point((int)x, (int)y);
+                AddNodeToGraph(nodeToken);
+                lastMouseLocation = originalMouseLocation;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Adds a node to the graph by node name at the specified coordinates
+        /// </summary>
+        /// <param name="nodeName">Display name of the node as defined in NodeAttribute</param>
+        /// <param name="x">X coordinate for the node</param>
+        /// <param name="y">Y coordinate for the node</param>
+        /// <returns>True if the node was successfully added, false otherwise</returns>
+        public bool AddNodeByName(string nodeName, float x, float y)
+        {
+            if (Context == null) return false;
+
+            var methods = Context.GetType().GetMethods();
+            var nodeToken = methods.Select(m => new NodeToken()
+            {
+                Method = m,
+                Attribute = m.GetCustomAttributes(typeof(NodeAttribute), false)
+                    .Cast<NodeAttribute>()
+                    .FirstOrDefault()
+            }).FirstOrDefault(n => n.Attribute != null && n.Attribute.Name == nodeName);
+
+            if (nodeToken != null)
+            {
+                var originalMouseLocation = lastMouseLocation;
+                lastMouseLocation = new Point((int)x, (int)y);
+                AddNodeToGraph(nodeToken);
+                lastMouseLocation = originalMouseLocation;
+                return true;
+            }
+
+            return false;
         }
 
         public bool HasImpact(NodeVisual startNode, NodeVisual endNode)
@@ -1372,16 +1645,10 @@ namespace NodeEditor
                 }
                 br.ReadBytes(br.ReadInt32()); //read additional data
             }
-            
-            // Propagate types for all dynamic nodes after loading
-            foreach (NodeVisual node in graph.Nodes)
-            {
-                if (node.HasDynamicTypeSupport())
-                {
-                    node.PropagateTypes(graph);
-                }
-            }
-            
+
+            // Propagate types for all connections after loading
+            PropagateAllConnectionTypes();
+
             Refresh();
         }
 
@@ -1618,15 +1885,9 @@ namespace NodeEditor
                     graph.Connections.Add(connection);
                 }
             }
-            
-            // Propagate types for all dynamic nodes after loading
-            foreach (NodeVisual node in graph.Nodes)
-            {
-                if (node.HasDynamicTypeSupport())
-                {
-                    node.PropagateTypes(graph);
-                }
-            }
+
+            // Propagate types for all connections after loading
+            PropagateAllConnectionTypes();
 
             rebuildConnectionDictionary = true;
             Refresh();

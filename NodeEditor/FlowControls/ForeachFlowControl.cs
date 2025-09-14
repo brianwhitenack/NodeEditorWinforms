@@ -82,55 +82,18 @@ namespace NodeEditor.FlowControls
                 {
                     results.Add(transformedItem);
                 }
-                else
-                {
-                    // If no transformation provided, use the original item
-                    results.Add(item);
-                }
+                //else
+                //{
+                //    // If no transformation provided, use the original item
+                //    results.Add(item);
+                //}
                 
                 index++;
             }
 
-            // Set the final results in the appropriate format based on the expected output type
-            if (currentNode != null)
-            {
-                Type expectedOutputType = currentNode.GetSocketRuntimeType(FOR_EACH_RESULT);
-                if (expectedOutputType != null)
-                {
-                    if (expectedOutputType.IsArray)
-                    {
-                        // Create properly typed array
-                        Array typedArray = Array.CreateInstance(resultType, results.Count);
-                        results.CopyTo(typedArray, 0);
-                        nodeContext[FOR_EACH_RESULT] = typedArray;
-                    }
-                    else if (expectedOutputType.IsGenericType && 
-                             (expectedOutputType.GetGenericTypeDefinition() == typeof(IEnumerable<>) ||
-                              expectedOutputType.GetGenericTypeDefinition() == typeof(IList<>) ||
-                              expectedOutputType.GetGenericTypeDefinition() == typeof(ICollection<>)))
-                    {
-                        // For interface types, return the List<T> we already created
-                        nodeContext[FOR_EACH_RESULT] = results;
-                    }
-                    else
-                    {
-                        // Default to array for unknown types
-                        Array typedArray = Array.CreateInstance(resultType, results.Count);
-                        results.CopyTo(typedArray, 0);
-                        nodeContext[FOR_EACH_RESULT] = typedArray;
-                    }
-                }
-                else
-                {
-                    // Fallback to object array
-                    nodeContext[FOR_EACH_RESULT] = results.Cast<object>().ToArray();
-                }
-            }
-            else
-            {
-                // Fallback to object array
-                nodeContext[FOR_EACH_RESULT] = results.Cast<object>().ToArray();
-            }
+            // Always return a List for consistency and better type handling
+            // Lists work better with our type system and avoid array covariance issues
+            nodeContext[FOR_EACH_RESULT] = results;
 
             // Execute the exit path with the complete results
             executeOutputPath(EXIT);

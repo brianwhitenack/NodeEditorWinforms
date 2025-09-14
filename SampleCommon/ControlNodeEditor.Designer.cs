@@ -30,10 +30,10 @@
         {
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
             this.panel = new System.Windows.Forms.Panel();
-            this.nodesControl = new NodeEditor.NodesControl();
             this.splitContainer2 = new System.Windows.Forms.SplitContainer();
             this.propertyGrid = new System.Windows.Forms.PropertyGrid();
             this.buttonProcess = new System.Windows.Forms.Button();
+            this.nodesControl = new NodeEditor.NodesControl();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
             this.splitContainer1.Panel1.SuspendLayout();
             this.splitContainer1.Panel2.SuspendLayout();
@@ -59,7 +59,7 @@
             // 
             this.splitContainer1.Panel2.Controls.Add(this.splitContainer2);
             this.splitContainer1.Size = new System.Drawing.Size(622, 485);
-            this.splitContainer1.SplitterDistance = 378;
+            this.splitContainer1.SplitterDistance = 465;
             this.splitContainer1.TabIndex = 0;
             // 
             // panel
@@ -69,17 +69,8 @@
             this.panel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.panel.Location = new System.Drawing.Point(0, 0);
             this.panel.Name = "panel";
-            this.panel.Size = new System.Drawing.Size(378, 485);
+            this.panel.Size = new System.Drawing.Size(465, 485);
             this.panel.TabIndex = 0;
-            // 
-            // nodesControl
-            // 
-            this.nodesControl.BackgroundImage = global::SampleCommon.Properties.Resources.grid;
-            this.nodesControl.Context = null;
-            this.nodesControl.Location = new System.Drawing.Point(0, 0);
-            this.nodesControl.Name = "nodesControl";
-            this.nodesControl.Size = new System.Drawing.Size(5000, 5000);
-            this.nodesControl.TabIndex = 0;
             // 
             // splitContainer2
             // 
@@ -96,8 +87,8 @@
             // splitContainer2.Panel2
             // 
             this.splitContainer2.Panel2.Controls.Add(this.buttonProcess);
-            this.splitContainer2.Size = new System.Drawing.Size(240, 485);
-            this.splitContainer2.SplitterDistance = 336;
+            this.splitContainer2.Size = new System.Drawing.Size(153, 485);
+            this.splitContainer2.SplitterDistance = 393;
             this.splitContainer2.TabIndex = 0;
             // 
             // propertyGrid
@@ -105,7 +96,7 @@
             this.propertyGrid.Dock = System.Windows.Forms.DockStyle.Fill;
             this.propertyGrid.Location = new System.Drawing.Point(0, 0);
             this.propertyGrid.Name = "propertyGrid";
-            this.propertyGrid.Size = new System.Drawing.Size(240, 336);
+            this.propertyGrid.Size = new System.Drawing.Size(153, 393);
             this.propertyGrid.TabIndex = 1;
             // 
             // buttonProcess
@@ -113,11 +104,21 @@
             this.buttonProcess.Dock = System.Windows.Forms.DockStyle.Top;
             this.buttonProcess.Location = new System.Drawing.Point(0, 0);
             this.buttonProcess.Name = "buttonProcess";
-            this.buttonProcess.Size = new System.Drawing.Size(240, 23);
+            this.buttonProcess.Size = new System.Drawing.Size(153, 23);
             this.buttonProcess.TabIndex = 0;
-            this.buttonProcess.Text = "Process";
+            this.buttonProcess.Text = "Calculate";
             this.buttonProcess.UseVisualStyleBackColor = true;
             this.buttonProcess.Click += new System.EventHandler(this.buttonProcess_Click);
+            // 
+            // nodesControl
+            // 
+            this.nodesControl.BackgroundImage = global::SampleCommon.Properties.Resources.grid;
+            this.nodesControl.Context = null;
+            this.nodesControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.nodesControl.Location = new System.Drawing.Point(0, 0);
+            this.nodesControl.Name = "nodesControl";
+            this.nodesControl.Size = new System.Drawing.Size(465, 485);
+            this.nodesControl.TabIndex = 0;
             // 
             // ControlNodeEditor
             // 

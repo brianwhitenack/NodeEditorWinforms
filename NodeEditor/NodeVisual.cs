@@ -16,6 +16,7 @@
  */
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -437,12 +438,33 @@ namespace NodeEditor
             context.CurrentProcessingNode = this;
 
             DynamicNodeContext dc = GetNodeContext();
-            var parametersDict = Type.GetParameters().OrderBy(x => x.Position).ToDictionary(x => x.Name, x => dc[x.Name]);
-            var parameters = parametersDict.Values.ToArray();
+            ParameterInfo[] methodParams = Type.GetParameters().OrderBy(x => x.Position).ToArray();
+            Dictionary<string, object> parametersDict = new Dictionary<string, object>();
+            object[] parameters = new object[methodParams.Length];
+            
+            // Convert parameters to the expected types
+            for (int i = 0; i < methodParams.Length; i++)
+            {
+                ParameterInfo param = methodParams[i];
+                object value = dc[param.Name];
+                Type expectedType = param.ParameterType;
+                
+                // Handle ref/out parameters
+                if (expectedType.IsByRef)
+                {
+                    expectedType = expectedType.GetElementType();
+                }
+                
+                // Convert the value if necessary using the shared type conversion logic
+                object convertedValue = TypePropagation.ConvertValue(value, expectedType);
+                
+                parametersDict[param.Name] = convertedValue;
+                parameters[i] = convertedValue;
+            }
 
             int ndx = 0;
             Type.Invoke(context, parameters);
-            foreach (var kv in parametersDict.ToArray())
+            foreach (KeyValuePair<string, object> kv in parametersDict.ToArray())
             {
                 parametersDict[kv.Key] = parameters[ndx];
                 ndx++;

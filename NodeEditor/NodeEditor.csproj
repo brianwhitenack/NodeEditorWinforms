@@ -53,6 +53,7 @@
     <Compile Include="ExecutionPath.cs" />
     <Compile Include="FeedbackType.cs" />
     <Compile Include="FlowControls\ForEachFlowControl.cs" />
+    <Compile Include="FlowControls\IfElseFlowControl.cs" />
     <Compile Include="IFlowControlNode.cs" />
     <Compile Include="INodesContext.cs" />
     <Compile Include="LoopFeedbackAttribute.cs" />
