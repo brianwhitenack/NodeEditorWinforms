@@ -32,15 +32,23 @@
             this.toolStrip1 = new System.Windows.Forms.ToolStrip();
             this.btnSave = new System.Windows.Forms.ToolStripButton();
             this.btnLoad = new System.Windows.Forms.ToolStripButton();
+            this.btnNew = new System.Windows.Forms.ToolStripButton();
             this.controlNodeEditor = new SampleCommon.ControlNodeEditor();
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabMeasurements = new System.Windows.Forms.TabPage();
+            this.btnUpdateMeasurements = new System.Windows.Forms.Button();
             this.txtMeasurements = new System.Windows.Forms.TextBox();
             this.tabParts = new System.Windows.Forms.TabPage();
             this.txtParts = new System.Windows.Forms.TextBox();
-            this.btnNew = new System.Windows.Forms.ToolStripButton();
-            this.btnUpdateMeasurements = new System.Windows.Forms.Button();
+            this.tabVariables = new System.Windows.Forms.TabPage();
+            this.btnUpdateVariables = new System.Windows.Forms.Button();
+            this.txtVariables = new System.Windows.Forms.TextBox();
+            this.tabFeatureFlags = new System.Windows.Forms.TabPage();
+            this.btnUpdateFeatureFlags = new System.Windows.Forms.Button();
+            this.txtFeatureFlags = new System.Windows.Forms.TextBox();
+            this.tabNodes = new System.Windows.Forms.TabPage();
+            this.ntbNodes = new NodeEditor.NodeToolboxPanel();
             this.toolStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
             this.splitContainer1.Panel1.SuspendLayout();
@@ -49,6 +57,9 @@
             this.tabControl1.SuspendLayout();
             this.tabMeasurements.SuspendLayout();
             this.tabParts.SuspendLayout();
+            this.tabVariables.SuspendLayout();
+            this.tabFeatureFlags.SuspendLayout();
+            this.tabNodes.SuspendLayout();
             this.SuspendLayout();
             // 
             // toolStrip1
@@ -83,6 +94,16 @@
             this.btnLoad.Text = "Load";
             this.btnLoad.Click += new System.EventHandler(this.btnLoad_Click);
             // 
+            // btnNew
+            // 
+            this.btnNew.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
+            this.btnNew.Image = ((System.Drawing.Image)(resources.GetObject("btnNew.Image")));
+            this.btnNew.ImageTransparentColor = System.Drawing.Color.Magenta;
+            this.btnNew.Name = "btnNew";
+            this.btnNew.Size = new System.Drawing.Size(35, 22);
+            this.btnNew.Text = "New";
+            this.btnNew.Click += new System.EventHandler(this.btnNew_Click);
+            // 
             // controlNodeEditor
             // 
             this.controlNodeEditor.Dock = System.Windows.Forms.DockStyle.Fill;
@@ -110,8 +131,11 @@
             // 
             // tabControl1
             // 
+            this.tabControl1.Controls.Add(this.tabNodes);
             this.tabControl1.Controls.Add(this.tabMeasurements);
             this.tabControl1.Controls.Add(this.tabParts);
+            this.tabControl1.Controls.Add(this.tabVariables);
+            this.tabControl1.Controls.Add(this.tabFeatureFlags);
             this.tabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Name = "tabControl1";
@@ -130,6 +154,18 @@
             this.tabMeasurements.TabIndex = 0;
             this.tabMeasurements.Text = "Measurements";
             this.tabMeasurements.UseVisualStyleBackColor = true;
+            // 
+            // btnUpdateMeasurements
+            // 
+            this.btnUpdateMeasurements.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnUpdateMeasurements.Location = new System.Drawing.Point(3, 6);
+            this.btnUpdateMeasurements.Name = "btnUpdateMeasurements";
+            this.btnUpdateMeasurements.Size = new System.Drawing.Size(134, 23);
+            this.btnUpdateMeasurements.TabIndex = 2;
+            this.btnUpdateMeasurements.Text = "Update";
+            this.btnUpdateMeasurements.UseVisualStyleBackColor = true;
+            this.btnUpdateMeasurements.Click += new System.EventHandler(this.btnUpdateMeasurements_Click);
             // 
             // txtMeasurements
             // 
@@ -163,27 +199,97 @@
             this.txtParts.Size = new System.Drawing.Size(134, 453);
             this.txtParts.TabIndex = 0;
             // 
-            // btnNew
+            // tabVariables
             // 
-            this.btnNew.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
-            this.btnNew.Image = ((System.Drawing.Image)(resources.GetObject("btnNew.Image")));
-            this.btnNew.ImageTransparentColor = System.Drawing.Color.Magenta;
-            this.btnNew.Name = "btnNew";
-            this.btnNew.Size = new System.Drawing.Size(35, 22);
-            this.btnNew.Text = "New";
-            this.btnNew.Click += new System.EventHandler(this.btnNew_Click);
+            this.tabVariables.Controls.Add(this.btnUpdateVariables);
+            this.tabVariables.Controls.Add(this.txtVariables);
+            this.tabVariables.Location = new System.Drawing.Point(4, 22);
+            this.tabVariables.Name = "tabVariables";
+            this.tabVariables.Padding = new System.Windows.Forms.Padding(3);
+            this.tabVariables.Size = new System.Drawing.Size(140, 459);
+            this.tabVariables.TabIndex = 2;
+            this.tabVariables.Text = "Variables";
+            this.tabVariables.UseVisualStyleBackColor = true;
             // 
-            // btnUpdateMeasurements
+            // btnUpdateVariables
             // 
-            this.btnUpdateMeasurements.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            this.btnUpdateVariables.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.btnUpdateMeasurements.Location = new System.Drawing.Point(3, 6);
-            this.btnUpdateMeasurements.Name = "btnUpdateMeasurements";
-            this.btnUpdateMeasurements.Size = new System.Drawing.Size(134, 23);
-            this.btnUpdateMeasurements.TabIndex = 2;
-            this.btnUpdateMeasurements.Text = "Update";
-            this.btnUpdateMeasurements.UseVisualStyleBackColor = true;
-            this.btnUpdateMeasurements.Click += new System.EventHandler(this.btnUpdateMeasurements_Click);
+            this.btnUpdateVariables.Location = new System.Drawing.Point(3, 4);
+            this.btnUpdateVariables.Name = "btnUpdateVariables";
+            this.btnUpdateVariables.Size = new System.Drawing.Size(134, 23);
+            this.btnUpdateVariables.TabIndex = 4;
+            this.btnUpdateVariables.Text = "Update";
+            this.btnUpdateVariables.UseVisualStyleBackColor = true;
+            this.btnUpdateVariables.Click += new System.EventHandler(this.btnUpdateVariables_Click);
+            // 
+            // txtVariables
+            // 
+            this.txtVariables.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtVariables.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.txtVariables.Location = new System.Drawing.Point(3, 30);
+            this.txtVariables.Multiline = true;
+            this.txtVariables.Name = "txtVariables";
+            this.txtVariables.Size = new System.Drawing.Size(134, 424);
+            this.txtVariables.TabIndex = 3;
+            // 
+            // tabFeatureFlags
+            // 
+            this.tabFeatureFlags.Controls.Add(this.btnUpdateFeatureFlags);
+            this.tabFeatureFlags.Controls.Add(this.txtFeatureFlags);
+            this.tabFeatureFlags.Location = new System.Drawing.Point(4, 22);
+            this.tabFeatureFlags.Name = "tabFeatureFlags";
+            this.tabFeatureFlags.Padding = new System.Windows.Forms.Padding(3);
+            this.tabFeatureFlags.Size = new System.Drawing.Size(140, 459);
+            this.tabFeatureFlags.TabIndex = 3;
+            this.tabFeatureFlags.Text = "Feature Flags";
+            this.tabFeatureFlags.UseVisualStyleBackColor = true;
+            // 
+            // btnUpdateFeatureFlags
+            // 
+            this.btnUpdateFeatureFlags.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnUpdateFeatureFlags.Location = new System.Drawing.Point(3, 4);
+            this.btnUpdateFeatureFlags.Name = "btnUpdateFeatureFlags";
+            this.btnUpdateFeatureFlags.Size = new System.Drawing.Size(134, 23);
+            this.btnUpdateFeatureFlags.TabIndex = 4;
+            this.btnUpdateFeatureFlags.Text = "Update";
+            this.btnUpdateFeatureFlags.UseVisualStyleBackColor = true;
+            this.btnUpdateFeatureFlags.Click += new System.EventHandler(this.btnUpdateFeatureFlags_Click);
+            // 
+            // txtFeatureFlags
+            // 
+            this.txtFeatureFlags.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtFeatureFlags.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.txtFeatureFlags.Location = new System.Drawing.Point(3, 30);
+            this.txtFeatureFlags.Multiline = true;
+            this.txtFeatureFlags.Name = "txtFeatureFlags";
+            this.txtFeatureFlags.Size = new System.Drawing.Size(134, 424);
+            this.txtFeatureFlags.TabIndex = 3;
+            // 
+            // tabNodes
+            // 
+            this.tabNodes.Controls.Add(this.ntbNodes);
+            this.tabNodes.Location = new System.Drawing.Point(4, 22);
+            this.tabNodes.Name = "tabNodes";
+            this.tabNodes.Padding = new System.Windows.Forms.Padding(3);
+            this.tabNodes.Size = new System.Drawing.Size(140, 459);
+            this.tabNodes.TabIndex = 4;
+            this.tabNodes.Text = "Toolbox";
+            this.tabNodes.UseVisualStyleBackColor = true;
+            // 
+            // ntbNodes
+            // 
+            this.ntbNodes.Context = null;
+            this.ntbNodes.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.ntbNodes.Location = new System.Drawing.Point(3, 3);
+            this.ntbNodes.Name = "ntbNodes";
+            this.ntbNodes.Size = new System.Drawing.Size(134, 453);
+            this.ntbNodes.TabIndex = 0;
             // 
             // FormMathSample
             // 
@@ -206,6 +312,11 @@
             this.tabMeasurements.PerformLayout();
             this.tabParts.ResumeLayout(false);
             this.tabParts.PerformLayout();
+            this.tabVariables.ResumeLayout(false);
+            this.tabVariables.PerformLayout();
+            this.tabFeatureFlags.ResumeLayout(false);
+            this.tabFeatureFlags.PerformLayout();
+            this.tabNodes.ResumeLayout(false);
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -225,6 +336,14 @@
         private System.Windows.Forms.TextBox txtParts;
         private System.Windows.Forms.ToolStripButton btnNew;
         private System.Windows.Forms.Button btnUpdateMeasurements;
+        private System.Windows.Forms.TabPage tabVariables;
+        private System.Windows.Forms.Button btnUpdateVariables;
+        private System.Windows.Forms.TextBox txtVariables;
+        private System.Windows.Forms.TabPage tabFeatureFlags;
+        private System.Windows.Forms.Button btnUpdateFeatureFlags;
+        private System.Windows.Forms.TextBox txtFeatureFlags;
+        private System.Windows.Forms.TabPage tabNodes;
+        private NodeEditor.NodeToolboxPanel ntbNodes;
     }
 }
 

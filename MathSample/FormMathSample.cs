@@ -90,7 +90,11 @@ namespace MathSample
             //Context assignment
             controlNodeEditor.nodesControl.Context = context;
             controlNodeEditor.nodesControl.OnNodeContextSelected += NodesControlOnOnNodeContextSelected;
-            
+
+            // Initialize toolbox with context
+            ntbNodes.Context = context;
+            ntbNodes.RefreshNodes();
+
             // Add default nodes
             AddDefaultNodes();
         }
@@ -189,6 +193,16 @@ namespace MathSample
         private void btnUpdateMeasurements_Click(object sender, EventArgs e)
         {
             context.Measurements = JsonConvert.DeserializeObject<List<Measurement>>(txtMeasurements.Text);
+        }
+
+        private void btnUpdateFeatureFlags_Click(object sender, EventArgs e)
+        {
+            context.FeatureFlags = JsonConvert.DeserializeObject<Dictionary<string, bool>>(txtFeatureFlags.Text);
+        }
+
+        private void btnUpdateVariables_Click(object sender, EventArgs e)
+        {
+            context.ProjectGuideVariables = JsonConvert.DeserializeObject<Dictionary<string, object>>(txtVariables.Text);
         }
     }
 }

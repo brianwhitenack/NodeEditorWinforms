@@ -24,12 +24,16 @@ namespace MathSample
         public event Action<string, NodeVisual, FeedbackType, object, bool> FeedbackInfo;
 
         public List<Measurement> Measurements { get; set; }
+        public Dictionary<string, object> ProjectGuideVariables { get; set; }
+        public Dictionary<string, bool> FeatureFlags { get; set; }
         public List<Part> Parts { get; set; }
 
         public PartCalculation()
         {
             Measurements = new List<Measurement>();
             Parts = new List<Part>();
+            ProjectGuideVariables = new Dictionary<string, object>();
+            FeatureFlags = new Dictionary<string, bool>();
         }
 
         public void FinishExecution()
@@ -43,10 +47,41 @@ namespace MathSample
             filteredMeasurements = measurements.Where(m => m.Type.Equals(type, StringComparison.OrdinalIgnoreCase)).ToList();
         }
 
-        [Node("Measurement List", "Measurements", "Basic", "Get the current measurement list", false)]
+        [Node("Measurement List", "Part Calculation", "Basic", "Get the current measurement list", false)]
         public void MeasurementList(out List<Measurement> measurements)
         {
             measurements = Measurements;
+        }
+
+        [Node("Feature Flag", "Part Calculation", "Basic", "Get a feature flag value", false)]
+        public void FeatureFlag(string featureFlagName, out bool featureFlagValue)
+        {
+            if (!FeatureFlags.TryGetValue(featureFlagName, out featureFlagValue))
+            {
+                featureFlagValue = false;
+            }
+        }
+
+        [Node("Project Guide Variable String", "Part Calculation", "Basic", "Get a project guide variable string", false)]
+        public void ProjectGuideVariableString(string variableName, out string variableValue)
+        {
+            if (ProjectGuideVariables.TryGetValue(variableName, out object variableValueObject))
+            {
+                variableValue = variableValueObject.ToString();
+            }
+            else
+            {
+                variableValue = string.Empty;
+            }
+        }
+
+        [Node("Project Guide Variable Number", "Part Calculation", "Basic", "Get a project guide variable number", false)]
+        public void ProjectGuideVariableNumber(string variableName, out double variableValue)
+        {
+            if (!ProjectGuideVariables.TryGetValue(variableName, out object variableValueObject) || !double.TryParse(variableValueObject.ToString(), out variableValue))
+            {
+                variableValue = 0;
+            }
         }
 
         [Node("Number Selection", "Measurements", "Basic", "Select a number from the measurement", false)]
@@ -273,7 +308,7 @@ namespace MathSample
             list = new List<object>() { item };
         }
 
-        [Node("Starter", "Helper", "Basic", "Starts execution", true, true)]
+        [Node("Starter", "Flow Control", "Basic", "Starts execution", true, true)]
         public void Starter()
         {
 

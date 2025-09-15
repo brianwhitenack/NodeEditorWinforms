@@ -66,6 +66,9 @@
       <DependentUpon>NodesControl.cs</DependentUpon>
     </Compile>
     <Compile Include="NodesGraph.cs" />
+    <Compile Include="NodeToolboxPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
     <Compile Include="NodeVisual.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Resources.Designer.cs">

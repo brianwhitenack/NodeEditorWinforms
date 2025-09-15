@@ -14,7 +14,9 @@
       "Bash(where msbuild)",
       "Bash(\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe\" NodeEditorNodeEditor.csproj)",
       "Bash(\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe\" \"NodeEditor\\NodeEditor.csproj\")",
-      "Bash(\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe\" NodeEditorWinforms.sln)"
+      "Bash(\"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe\" NodeEditorWinforms.sln)",
+      "Bash(del:*)",
+      "Bash(cmd /c:*)"
     ],
     "deny": [],
     "ask": []

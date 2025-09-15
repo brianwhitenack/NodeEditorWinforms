@@ -137,6 +137,12 @@ namespace NodeEditor
             SetStyle(ControlStyles.Selectable, true);
             // Enable double buffering for smoother rendering
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+
+            // Enable drag and drop
+            AllowDrop = true;
+            DragEnter += NodesControl_DragEnter;
+            DragOver += NodesControl_DragOver;
+            DragDrop += NodesControl_DragDrop;
         }
 
         private void ContextOnFeedbackInfo(string message, NodeVisual nodeVisual, FeedbackType type, object tag, bool breakExecution)
@@ -2112,5 +2118,56 @@ namespace NodeEditor
             rebuildConnectionDictionary = true;
             Refresh();
         }
+
+        private void NodesControl_DragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(typeof(NodeDragData)))
+            {
+                e.Effect = DragDropEffects.Copy;
+            }
+            else
+            {
+                e.Effect = DragDropEffects.None;
+            }
+        }
+
+        private void NodesControl_DragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(typeof(NodeDragData)))
+            {
+                e.Effect = DragDropEffects.Copy;
+            }
+            else
+            {
+                e.Effect = DragDropEffects.None;
+            }
+        }
+
+        private void NodesControl_DragDrop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(typeof(NodeDragData)))
+            {
+                NodeDragData dragData = e.Data.GetData(typeof(NodeDragData)) as NodeDragData;
+                if (dragData?.MethodName != null)
+                {
+                    // Convert screen coordinates to world coordinates
+                    Point clientPoint = PointToClient(new Point(e.X, e.Y));
+                    PointF worldPoint = ScreenToWorld(clientPoint);
+
+                    // Create a new node using the method from the dragged item
+                    AddNodeByMethodName(dragData.MethodName, worldPoint.X, worldPoint.Y);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Data object for node drag-and-drop operations
+    /// </summary>
+    [Serializable]
+    public class NodeDragData
+    {
+        public string MethodName { get; set; }
+        public string DisplayName { get; set; }
     }
 }
