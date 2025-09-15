@@ -129,7 +129,7 @@ namespace NodeEditor
         public NodesControl()
         {
             InitializeComponent();
-            timer.Interval = 30;
+            timer.Interval = 16; // ~60 FPS instead of 33 FPS
             timer.Tick += TimerOnTick;
             timer.Start();
             KeyDown += OnKeyDown;
@@ -223,6 +223,11 @@ namespace NodeEditor
             // Grid settings
             int baseGridSize = 20;
             float gridSize = baseGridSize * zoomLevel; // Scale grid with zoom
+
+            // Skip grid drawing if too small or too large to be useful
+            if (gridSize < 2 || gridSize > 200)
+                return;
+
             Color gridColor = Color.FromArgb(60, 0, 0, 0); // Light gray grid
             Color majorGridColor = Color.FromArgb(100, 0, 0, 0); // Darker for major lines
 
@@ -255,6 +260,7 @@ namespace NodeEditor
 
         private void NodesControl_Paint(object sender, PaintEventArgs e)
         {
+            // Set graphics quality once
             e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
             e.Graphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
 
@@ -262,7 +268,7 @@ namespace NodeEditor
             DrawGrid(e.Graphics);
 
             // Save the original transform
-            var originalTransform = e.Graphics.Transform;
+            Matrix originalTransform = e.Graphics.Transform;
 
             // Apply zoom and pan transformation
             e.Graphics.TranslateTransform(panOffset.X, panOffset.Y);
@@ -275,9 +281,11 @@ namespace NodeEditor
 
             if (dragSocket != null)
             {
-                Pen pen = new Pen(Color.Black, 2 / zoomLevel); // Adjust pen width for zoom
-                // dragConnectionBegin and dragConnectionEnd are already in world space
-                NodesGraph.DrawConnection(e.Graphics, pen, dragConnectionBegin, dragConnectionEnd);
+                using (Pen pen = new Pen(Color.Black, 2 / zoomLevel)) // Adjust pen width for zoom
+                {
+                    // dragConnectionBegin and dragConnectionEnd are already in world space
+                    NodesGraph.DrawConnection(e.Graphics, pen, dragConnectionBegin, dragConnectionEnd);
+                }
             }
 
             // Restore transform for UI elements
@@ -286,8 +294,12 @@ namespace NodeEditor
             if (selectionStart != PointF.Empty)
             {
                 Rectangle rect = Rectangle.Round(MakeRect(selectionStart, selectionEnd));
-                e.Graphics.FillRectangle(new SolidBrush(Color.FromArgb(50, Color.CornflowerBlue)), rect);
-                e.Graphics.DrawRectangle(new Pen(Color.DodgerBlue), rect);
+                using (var fillBrush = new SolidBrush(Color.FromArgb(50, Color.CornflowerBlue)))
+                using (var borderPen = new Pen(Color.DodgerBlue))
+                {
+                    e.Graphics.FillRectangle(fillBrush, rect);
+                    e.Graphics.DrawRectangle(borderPen, rect);
+                }
             }
 
             needRepaint = false;
@@ -335,7 +347,7 @@ namespace NodeEditor
                     float dy = (em.Y - lastmpos.Y) / zoomLevel;
 
                     // Cache selected nodes to avoid multiple LINQ queries
-                    var selectedNodes = graph.Nodes.Where(x => x.IsSelected).ToList();
+                    List<NodeVisual> selectedNodes = graph.Nodes.Where(x => x.IsSelected).ToList();
 
                     if (selectedNodes.Count > 0)
                     {
@@ -413,8 +425,22 @@ namespace NodeEditor
                     }
                 }
                 lastmpos = em;
+
+                // For immediate responsiveness during dragging, invalidate directly
+                // instead of waiting for timer
+                if (mdown || isDraggingConnection || isPanning)
+                {
+                    Invalidate();
+                }
+                else
+                {
+                    needRepaint = true;
+                }
             }
-            needRepaint = true;
+            else
+            {
+                needRepaint = true;
+            }
         }
 
         /// <summary>
@@ -1075,8 +1101,8 @@ namespace NodeEditor
 
         private void AddToMenu(ToolStripItemCollection items, NodeToken token, string path, EventHandler click)
         {
-            var pathParts = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-            var first = pathParts.FirstOrDefault();
+            string[] pathParts = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            string first = pathParts.FirstOrDefault();
             ToolStripMenuItem item = null;
             if (!items.ContainsKey(first))
             {
@@ -1089,7 +1115,7 @@ namespace NodeEditor
             {
                 item = items[first] as ToolStripMenuItem;
             }
-            var next = string.Join("/", pathParts.Skip(1));
+            string next = string.Join("/", pathParts.Skip(1));
             if (!string.IsNullOrEmpty(next))
             {
                 item.MouseEnter += (sender, args) => OnNodeHint("");
@@ -1100,7 +1126,7 @@ namespace NodeEditor
                 item.Click += click;
                 item.Click += (sender, args) =>
                 {
-                    var i = allContextItems.Keys.FirstOrDefault(x => x.Name == item.Name);
+                    ToolStripMenuItem i = allContextItems.Keys.FirstOrDefault(x => x.Name == item.Name);
                     allContextItems[i]++;
                 };
                 item.MouseEnter += (sender, args) => OnNodeHint(token.Attribute.Description ?? "");
@@ -1120,8 +1146,8 @@ namespace NodeEditor
             // Only show context menu if we didn't drag
             if (e.Button == MouseButtons.Right && !rightMouseMoved)
             {
-                var methods = Context.GetType().GetMethods();
-                var nodes =
+                MethodInfo[] methods = Context.GetType().GetMethods();
+                IEnumerable<NodeToken> nodes =
                     methods.Select(
                         x =>
                             new
@@ -1134,7 +1160,7 @@ namespace NodeEditor
                                         .FirstOrDefault()
                             }).Where(x => x.Attribute != null);
 
-                var context = new ContextMenuStrip();
+                ContextMenuStrip context = new ContextMenuStrip();
                 if (graph.Nodes.Exists(x => x.IsSelected))
                 {
                     context.Items.Add("Delete Node(s)", null, ((o, args) =>
@@ -1151,7 +1177,7 @@ namespace NodeEditor
                     }));
                     if (graph.Nodes.Count(x => x.IsSelected) == 2)
                     {
-                        var sel = graph.Nodes.Where(x => x.IsSelected).ToArray();
+                        NodeVisual[] sel = graph.Nodes.Where(x => x.IsSelected).ToArray();
                         context.Items.Add("Check Impact", null, ((o, args) =>
                         {
                             if (HasImpact(sel[0], sel[1]) || HasImpact(sel[1], sel[0]))
@@ -1168,7 +1194,7 @@ namespace NodeEditor
                 }
                 if (allContextItems.Values.Any(x => x > 0))
                 {
-                    var handy = allContextItems.Where(x => x.Value > 0 && !string.IsNullOrEmpty(((x.Key.Tag) as NodeToken).Attribute.Menu)).OrderByDescending(x => x.Value).Take(8);
+                    IEnumerable<KeyValuePair<ToolStripMenuItem, int>> handy = allContextItems.Where(x => x.Value > 0 && !string.IsNullOrEmpty(((x.Key.Tag) as NodeToken).Attribute.Menu)).OrderByDescending(x => x.Value).Take(8);
                     foreach (var kv in handy)
                     {
                         context.Items.Add(kv.Key);
@@ -1240,16 +1266,16 @@ namespace NodeEditor
 
         private void DuplicateSelectedNodes()
         {
-            var cloned = new List<NodeVisual>();
+            List<NodeVisual> cloned = new List<NodeVisual>();
             foreach (var n in graph.Nodes.Where(x => x.IsSelected))
             {
                 int count = graph.Nodes.Count(x => x.IsSelected);
-                var ms = new MemoryStream();
-                var bw = new BinaryWriter(ms);
+                MemoryStream ms = new MemoryStream();
+                BinaryWriter bw = new BinaryWriter(ms);
                 SerializeNode(bw, n);
                 ms.Seek(0, SeekOrigin.Begin);
-                var br = new BinaryReader(ms);
-                var clone = DeserializeNode(br);
+                BinaryReader br = new BinaryReader(ms);
+                NodeVisual clone = DeserializeNode(br);
                 clone.X += 40;
                 clone.Y += 40;
                 clone.GUID = Guid.NewGuid().ToString();
@@ -1459,7 +1485,7 @@ namespace NodeEditor
 
         public void Execute(NodeVisual node = null)
         {
-            var nodeQueue = new Queue<NodeVisual>();
+            Queue<NodeVisual> nodeQueue = new Queue<NodeVisual>();
             nodeQueue.Enqueue(node);
 
             while (nodeQueue.Count > 0)
@@ -1472,7 +1498,7 @@ namespace NodeEditor
                     return;
                 }
 
-                var init = nodeQueue.Dequeue() ?? graph.Nodes.FirstOrDefault(x => x.ExecInit);
+                NodeVisual init = nodeQueue.Dequeue() ?? graph.Nodes.FirstOrDefault(x => x.ExecInit);
                 if (init != null)
                 {
                     init.Feedback = FeedbackType.Debug;
@@ -1490,7 +1516,7 @@ namespace NodeEditor
                         // Normal node execution
                         init.Execute(Context);
 
-                        var connection =
+                        NodeConnection connection =
                             graph.Connections.FirstOrDefault(
                                 x => x.OutputNode == init && x.IsExecution && x.OutputSocket.Value != null && (x.OutputSocket.Value as ExecutionPath).IsSignaled);
                         if (connection == null)
@@ -1511,7 +1537,7 @@ namespace NodeEditor
                         {
                             if (executionStack.Count > 0)
                             {
-                                var back = executionStack.Pop();
+                                NodeVisual back = executionStack.Pop();
                                 back.IsBackExecuted = true;
                                 Execute(back);
                             }
@@ -1523,7 +1549,7 @@ namespace NodeEditor
 
         public List<NodeVisual> GetNodes(params string[] nodeNames)
         {
-            var nodes = graph.Nodes.Where(x => nodeNames.Contains(x.Name));
+            IEnumerable<NodeVisual> nodes = graph.Nodes.Where(x => nodeNames.Contains(x.Name));
             return nodes.ToList();
         }
 
@@ -1538,8 +1564,8 @@ namespace NodeEditor
         {
             if (Context == null) return false;
 
-            var methods = Context.GetType().GetMethods();
-            var nodeToken = methods.Select(m => new NodeToken()
+            MethodInfo[] methods = Context.GetType().GetMethods();
+            NodeToken nodeToken = methods.Select(m => new NodeToken()
             {
                 Method = m,
                 Attribute = m.GetCustomAttributes(typeof(NodeAttribute), false)
@@ -1549,7 +1575,7 @@ namespace NodeEditor
 
             if (nodeToken != null)
             {
-                var originalMouseLocation = lastMouseLocation;
+                Point originalMouseLocation = lastMouseLocation;
                 lastMouseLocation = new Point((int)x, (int)y);
                 AddNodeToGraph(nodeToken);
                 lastMouseLocation = originalMouseLocation;
@@ -1570,8 +1596,8 @@ namespace NodeEditor
         {
             if (Context == null) return false;
 
-            var methods = Context.GetType().GetMethods();
-            var nodeToken = methods.Select(m => new NodeToken()
+            MethodInfo[] methods = Context.GetType().GetMethods();
+            NodeToken nodeToken = methods.Select(m => new NodeToken()
             {
                 Method = m,
                 Attribute = m.GetCustomAttributes(typeof(NodeAttribute), false)
@@ -1581,7 +1607,7 @@ namespace NodeEditor
 
             if (nodeToken != null)
             {
-                var originalMouseLocation = lastMouseLocation;
+                Point originalMouseLocation = lastMouseLocation;
                 lastMouseLocation = new Point((int)x, (int)y);
                 AddNodeToGraph(nodeToken);
                 lastMouseLocation = originalMouseLocation;
@@ -1593,7 +1619,7 @@ namespace NodeEditor
 
         public bool HasImpact(NodeVisual startNode, NodeVisual endNode)
         {
-            var connections = graph.Connections.Where(x => x.OutputNode == startNode && !x.IsExecution);
+            IEnumerable<NodeConnection> connections = graph.Connections.Where(x => x.OutputNode == startNode && !x.IsExecution);
             foreach (var connection in connections)
             {
                 if (connection.InputNode == endNode)
@@ -1612,7 +1638,7 @@ namespace NodeEditor
 
         public void ExecuteResolving(params string[] nodeNames)
         {
-            var nodes = graph.Nodes.Where(x => nodeNames.Contains(x.Name));
+            IEnumerable<NodeVisual> nodes = graph.Nodes.Where(x => nodeNames.Contains(x.Name));
 
             foreach (var node in nodes)
             {
@@ -1631,7 +1657,7 @@ namespace NodeEditor
                     continue;
                 }
 
-                var connection =
+                NodeConnection connection =
                     graph.Connections.FirstOrDefault(x => x.InputNode == node && x.InputSocketName == input.Name);
                 if (connection != null)
                 {
@@ -1662,7 +1688,7 @@ namespace NodeEditor
                     continue;
                 }
 
-                var connection = GetConnection(node.GUID + input.Name);
+                NodeConnection connection = GetConnection(node.GUID + input.Name);
                 //graph.Connections.FirstOrDefault(x => x.InputNode == node && x.InputSocketName == input.Name);
                 if (connection != null)
                 {
@@ -1698,30 +1724,30 @@ namespace NodeEditor
 
         public string ExportToXml()
         {
-            var xml = new XmlDocument();
+            XmlDocument xml = new XmlDocument();
 
             XmlElement el = (XmlElement)xml.AppendChild(xml.CreateElement("NodeGrap"));
             el.SetAttribute("Created", DateTime.Now.ToString());
-            var nodes = el.AppendChild(xml.CreateElement("Nodes"));
+            XmlNode nodes = el.AppendChild(xml.CreateElement("Nodes"));
             foreach (var node in graph.Nodes)
             {
-                var xmlNode = (XmlElement)nodes.AppendChild(xml.CreateElement("Node"));
+                XmlElement xmlNode = (XmlElement)nodes.AppendChild(xml.CreateElement("Node"));
                 xmlNode.SetAttribute("Name", node.XmlExportName);
                 xmlNode.SetAttribute("Id", node.GetGuid());
-                var xmlContext = (XmlElement)xmlNode.AppendChild(xml.CreateElement("Context"));
+                XmlElement xmlContext = (XmlElement)xmlNode.AppendChild(xml.CreateElement("Context"));
                 DynamicNodeContext context = node.GetNodeContext();
                 foreach (var kv in context)
                 {
-                    var ce = (XmlElement)xmlContext.AppendChild(xml.CreateElement("ContextMember"));
+                    XmlElement ce = (XmlElement)xmlContext.AppendChild(xml.CreateElement("ContextMember"));
                     ce.SetAttribute("Name", kv);
                     ce.SetAttribute("Value", Convert.ToString(context[kv] ?? ""));
                     ce.SetAttribute("Type", context[kv] == null ? "" : context[kv].GetType().FullName);
                 }
             }
-            var connections = el.AppendChild(xml.CreateElement("Connections"));
+            XmlNode connections = el.AppendChild(xml.CreateElement("Connections"));
             foreach (var conn in graph.Connections)
             {
-                var xmlConn = (XmlElement)nodes.AppendChild(xml.CreateElement("Connection"));
+                XmlElement xmlConn = (XmlElement)nodes.AppendChild(xml.CreateElement("Connection"));
                 xmlConn.SetAttribute("OutputNodeId", conn.OutputNode.GetGuid());
                 xmlConn.SetAttribute("OutputNodeSocket", conn.OutputSocketName);
                 xmlConn.SetAttribute("InputNodeId", conn.InputNode.GetGuid());
@@ -1807,29 +1833,29 @@ namespace NodeEditor
         {
             using (var br = new BinaryReader(new MemoryStream(data)))
             {
-                var ident = br.ReadString();
+                string ident = br.ReadString();
                 if (ident != "NodeSystemP") return;
                 rebuildConnectionDictionary = true;
                 graph.Connections.Clear();
                 graph.Nodes.Clear();
                 Controls.Clear();
 
-                var version = br.ReadInt32();
+                int version = br.ReadInt32();
                 int nodeCount = br.ReadInt32();
                 for (int i = 0; i < nodeCount; i++)
                 {
-                    var nv = DeserializeNode(br);
+                    NodeVisual nv = DeserializeNode(br);
 
                     graph.Nodes.Add(nv);
                 }
-                var connectionsCount = br.ReadInt32();
+                int connectionsCount = br.ReadInt32();
                 for (int i = 0; i < connectionsCount; i++)
                 {
-                    var con = new NodeConnection();
-                    var og = br.ReadString();
+                    NodeConnection con = new NodeConnection();
+                    string og = br.ReadString();
                     con.OutputNode = graph.Nodes.FirstOrDefault(x => x.GUID == og);
                     con.OutputSocketName = br.ReadString();
-                    var ig = br.ReadString();
+                    string ig = br.ReadString();
                     con.InputNode = graph.Nodes.FirstOrDefault(x => x.GUID == ig);
                     con.InputSocketName = br.ReadString();
                     br.ReadBytes(br.ReadInt32()); //read additional data
@@ -1856,10 +1882,10 @@ namespace NodeEditor
             nv.ExecInit = br.ReadBoolean();
             nv.Name = br.ReadString();
             nv.Order = br.ReadInt32();
-            var customEditorAssembly = br.ReadString();
-            var customEditor = br.ReadString();
+            string customEditorAssembly = br.ReadString();
+            string customEditor = br.ReadString();
             nv.Type = Context.GetType().GetMethod(br.ReadString());
-            var attribute = nv.Type.GetCustomAttributes(typeof(NodeAttribute), false)
+            NodeAttribute attribute = (NodeAttribute)nv.Type.GetCustomAttributes(typeof(NodeAttribute), false)
                                         .Cast<NodeAttribute>()
                                         .FirstOrDefault();
             if (attribute != null)
@@ -1868,7 +1894,7 @@ namespace NodeEditor
                 nv.CustomHeight = attribute.Height;
             }
             nv.GetNodeContext().Deserialize(br.ReadBytes(br.ReadInt32()));
-            var additional = br.ReadInt32(); //read additional data
+            int additional = br.ReadInt32(); //read additional data
             if (additional >= 4)
             {
                 nv.Int32Tag = br.ReadInt32();
@@ -1961,7 +1987,7 @@ namespace NodeEditor
             // Serialize connections
             foreach (var connection in graph.Connections)
             {
-                var connModel = new ConnectionModel
+                ConnectionModel connModel = new ConnectionModel
                 {
                     OutputNodeId = connection.OutputNode.GUID,
                     OutputSocketName = connection.OutputSocketName,
@@ -1979,7 +2005,7 @@ namespace NodeEditor
         /// </summary>
         public void DeserializeFromJson(string json)
         {
-            var model = JsonConvert.DeserializeObject<NodeGraphModel>(json);
+            NodeGraphModel model = JsonConvert.DeserializeObject<NodeGraphModel>(json);
             if (model == null)
                 return;
 
@@ -2068,7 +2094,7 @@ namespace NodeEditor
             // Deserialize connections
             foreach (var connModel in model.Connections)
             {
-                var connection = new NodeConnection();
+                NodeConnection connection = new NodeConnection();
                 connection.OutputNode = graph.Nodes.FirstOrDefault(x => x.GUID == connModel.OutputNodeId);
                 connection.OutputSocketName = connModel.OutputSocketName;
                 connection.InputNode = graph.Nodes.FirstOrDefault(x => x.GUID == connModel.InputNodeId);
