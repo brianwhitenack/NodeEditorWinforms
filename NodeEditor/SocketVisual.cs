@@ -63,6 +63,11 @@ namespace NodeEditor
         /// </summary>
         public Type RuntimeType { get; set; }
 
+        /// <summary>
+        /// Whether this socket should be highlighted as compatible during connection drag
+        /// </summary>
+        public bool IsHighlightedAsCompatible { get; set; }
+
         public bool IsExecution
         {
             get { return Type.Name.Replace("&", "") == typeof (ExecutionPath).Name; }
@@ -97,15 +102,28 @@ namespace NodeEditor
         }
 
         public void Draw(Graphics g, Point mouseLocation, MouseButtons mouseButtons)
-        {            
+        {
             RectangleF socketRect = new RectangleF(X, Y, Width, Height);
             bool hover = socketRect.Contains(mouseLocation);
             Brush fontBrush = Brushes.Black;
 
+            // Highlight compatible sockets during connection drag
+            if (IsHighlightedAsCompatible)
+            {
+                fontBrush = Brushes.Green;
+                // Draw a green glow effect around compatible sockets
+                using (Pen glowPen = new Pen(Color.FromArgb(100, Color.LimeGreen), 3))
+                {
+                    RectangleF glowRect = new RectangleF(X - 2, Y - 2, Width + 4, Height + 4);
+                    g.DrawEllipse(glowPen, glowRect);
+                }
+            }
+
             if (hover)
             {
                 socketRect.Inflate(4, 4);
-                fontBrush = Brushes.Blue;
+                if (!IsHighlightedAsCompatible)
+                    fontBrush = Brushes.Blue;
             }
 
             g.SmoothingMode = SmoothingMode.HighSpeed;

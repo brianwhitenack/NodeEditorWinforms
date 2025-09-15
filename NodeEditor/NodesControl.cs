@@ -532,6 +532,9 @@ namespace NodeEditor
                 }
             }
 
+            // Highlight compatible sockets when dragging a connection
+            HighlightCompatibleSockets(dragSocket);
+
             mdown = true;
             lastmpos = PointToScreen(location);
 
@@ -627,6 +630,9 @@ namespace NodeEditor
                 graph.Connections.Remove(connection);
                 rebuildConnectionDictionary = true;
 
+                // Highlight compatible sockets when disconnecting and redragging
+                HighlightCompatibleSockets(dragSocket);
+
                 // Handle type propagation after disconnection - use unified propagation
                 if (connection != null)
                 {
@@ -639,6 +645,9 @@ namespace NodeEditor
                 dragSocket = socket;
                 dragSocketNode = nodeWhole;
             }
+
+            // Highlight compatible sockets when starting a connection drag
+            HighlightCompatibleSockets(dragSocket);
 
             // Convert to world coordinates for connection dragging
             PointF worldLoc = ScreenToWorld(location);
@@ -724,6 +733,52 @@ namespace NodeEditor
             // Use TypePropagation's more sophisticated type compatibility check
             // which handles generic collections properly
             return TypePropagation.AreTypesCompatible(outputType, inputType);
+        }
+
+        /// <summary>
+        /// Highlights all sockets compatible with the currently dragged socket
+        /// </summary>
+        private void HighlightCompatibleSockets(SocketVisual draggedSocket)
+        {
+            if (draggedSocket == null) return;
+
+            // Go through all nodes and their sockets
+            foreach (NodeVisual node in graph.Nodes)
+            {
+                foreach (SocketVisual socket in node.GetSockets())
+                {
+                    // Skip sockets on the same node as the dragged socket
+                    if (node == dragSocketNode)
+                    {
+                        socket.IsHighlightedAsCompatible = false;
+                        continue;
+                    }
+
+                    // Only highlight opposite type sockets (input vs output)
+                    if (socket.Input == draggedSocket.Input)
+                    {
+                        socket.IsHighlightedAsCompatible = false;
+                        continue;
+                    }
+
+                    // Check if the sockets are compatible
+                    socket.IsHighlightedAsCompatible = IsConnectable(draggedSocket, socket);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Clears all socket highlighting
+        /// </summary>
+        private void ClearSocketHighlighting()
+        {
+            foreach (NodeVisual node in graph.Nodes)
+            {
+                foreach (SocketVisual socket in node.GetSockets())
+                {
+                    socket.IsHighlightedAsCompatible = false;
+                }
+            }
         }
 
         private Type TypeResolver(Assembly assembly, string name, bool inh)
@@ -866,6 +921,9 @@ namespace NodeEditor
                     }
                 }
             }
+
+            // Clear socket highlighting when connection drag ends
+            ClearSocketHighlighting();
 
             dragSocket = null;
             mdown = false;
