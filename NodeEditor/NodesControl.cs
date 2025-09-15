@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -59,6 +60,10 @@ namespace NodeEditor
         private Stack<NodeVisual> executionStack = new Stack<NodeVisual>();
         private bool rebuildConnectionDictionary = true;
         private Dictionary<string, NodeConnection> connectionDictionary = new Dictionary<string, NodeConnection>();
+
+        // Drag preview support
+        private NodeVisual dragPreviewNode = null;
+        private Point dragPreviewLocation;
 
         /// <summary>
         /// Context of the editor. You should set here an instance that implements INodesContext interface.
@@ -137,6 +142,13 @@ namespace NodeEditor
             SetStyle(ControlStyles.Selectable, true);
             // Enable double buffering for smoother rendering
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+
+            // Enable drag and drop
+            AllowDrop = true;
+            DragEnter += NodesControl_DragEnter;
+            DragOver += NodesControl_DragOver;
+            DragDrop += NodesControl_DragDrop;
+            DragLeave += NodesControl_DragLeave;
         }
 
         private void ContextOnFeedbackInfo(string message, NodeVisual nodeVisual, FeedbackType type, object tag, bool breakExecution)
@@ -285,6 +297,27 @@ namespace NodeEditor
                 {
                     // dragConnectionBegin and dragConnectionEnd are already in world space
                     NodesGraph.DrawConnection(e.Graphics, pen, dragConnectionBegin, dragConnectionEnd);
+                }
+            }
+
+            // Draw drag preview if active
+            if (dragPreviewNode != null)
+            {
+                // Draw the preview node with a slight visual difference (e.g., dashed border)
+                dragPreviewNode.Draw(e.Graphics, Point.Round(transformedMouse), MouseButtons.None);
+
+                // Draw a dashed outline to indicate it's a preview
+                SizeF nodeSize = dragPreviewNode.GetNodeBounds();
+                using (Pen dashPen = new Pen(Color.DodgerBlue, 2 / zoomLevel))
+                {
+                    dashPen.DashStyle = DashStyle.Dash;
+                    RectangleF previewRect = new RectangleF(
+                        dragPreviewNode.X - 2,
+                        dragPreviewNode.Y - 2,
+                        nodeSize.Width + 4,
+                        nodeSize.Height + 4
+                    );
+                    e.Graphics.DrawRectangle(dashPen, Rectangle.Round(previewRect));
                 }
             }
 
@@ -2112,5 +2145,134 @@ namespace NodeEditor
             rebuildConnectionDictionary = true;
             Refresh();
         }
+
+        private void NodesControl_DragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(typeof(NodeDragData)))
+            {
+                e.Effect = DragDropEffects.Copy;
+            }
+            else
+            {
+                e.Effect = DragDropEffects.None;
+            }
+        }
+
+        private void NodesControl_DragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(typeof(NodeDragData)))
+            {
+                e.Effect = DragDropEffects.Copy;
+
+                // Update drag preview position if active
+                if (dragPreviewNode != null)
+                {
+                    // Convert screen coordinates to client coordinates, then to world coordinates
+                    Point clientPoint = PointToClient(new Point(e.X, e.Y));
+                    PointF worldPoint = ScreenToWorld(clientPoint);
+
+                    // Store old position for socket update
+                    float oldX = dragPreviewNode.X;
+                    float oldY = dragPreviewNode.Y;
+
+                    // Update preview position
+                    dragPreviewNode.X = worldPoint.X;
+                    dragPreviewNode.Y = worldPoint.Y;
+
+                    // Update socket positions with the delta movement
+                    float dx = worldPoint.X - oldX;
+                    float dy = worldPoint.Y - oldY;
+                    dragPreviewNode.UpdateSocketPositions(dx, dy);
+
+                    // Trigger repaint
+                    Invalidate();
+                }
+            }
+            else
+            {
+                e.Effect = DragDropEffects.None;
+            }
+        }
+
+        private void NodesControl_DragDrop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(typeof(NodeDragData)))
+            {
+                NodeDragData dragData = e.Data.GetData(typeof(NodeDragData)) as NodeDragData;
+                if (dragData?.MethodName != null)
+                {
+                    // Convert screen coordinates to world coordinates
+                    Point clientPoint = PointToClient(new Point(e.X, e.Y));
+                    PointF worldPoint = ScreenToWorld(clientPoint);
+
+                    // Create a new node using the method from the dragged item
+                    AddNodeByMethodName(dragData.MethodName, worldPoint.X, worldPoint.Y);
+                }
+            }
+        }
+
+        private void NodesControl_DragLeave(object sender, EventArgs e)
+        {
+            // Hide preview when drag leaves the control
+            if (dragPreviewNode != null)
+            {
+                dragPreviewNode.X = -1000;
+                dragPreviewNode.Y = -1000;
+                Invalidate();
+            }
+        }
+
+        /// <summary>
+        /// Starts showing a drag preview for a node being dragged from toolbox
+        /// </summary>
+        public void StartDragPreview(NodeToolboxItem item)
+        {
+            if (item?.Method == null) return;
+
+            // Create a preview node
+            dragPreviewNode = new NodeVisual();
+            dragPreviewNode.Type = item.Method;
+            dragPreviewNode.Name = item.DisplayName;
+            dragPreviewNode.Callable = item.Attribute.IsCallable;
+            dragPreviewNode.ExecInit = item.Attribute.IsExecutionInitiator;
+            dragPreviewNode.CustomWidth = item.Attribute.Width > 0 ? item.Attribute.Width : -1;
+            dragPreviewNode.CustomHeight = item.Attribute.Height > 0 ? item.Attribute.Height : -1;
+
+            // Position it initially off-screen
+            dragPreviewNode.X = -1000;
+            dragPreviewNode.Y = -1000;
+
+            // Force socket generation by calling GetSockets
+            dragPreviewNode.GetSockets();
+        }
+
+        /// <summary>
+        /// Stops showing the drag preview
+        /// </summary>
+        public void StopDragPreview()
+        {
+            dragPreviewNode = null;
+            Invalidate(); // Redraw to remove preview
+        }
+    }
+
+    /// <summary>
+    /// Represents a draggable node item from the toolbox (moved here for shared access)
+    /// </summary>
+    public class NodeToolboxItem
+    {
+        public MethodInfo Method { get; set; }
+        public NodeAttribute Attribute { get; set; }
+        public string DisplayName { get; set; }
+    }
+
+    /// <summary>
+    /// Data object for node drag-and-drop operations
+    /// </summary>
+    [Serializable]
+    public class NodeDragData
+    {
+        public string MethodName { get; set; }
+        public string DisplayName { get; set; }
     }
 }
